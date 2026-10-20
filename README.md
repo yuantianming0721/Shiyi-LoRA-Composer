@@ -1,0 +1,231 @@
+# Shiyi LoRA Composer
+
+一个节点装下整条 LoRA 链，替代 `LoraLoader|pysssss` 串联 + notes 堆画布的做法。
+
+## 安装
+
+**本机**：目录已经在 `custom_nodes/Shiyi-LoRA-Composer`，重启 ComfyUI 即可（新节点要重启，前端再刷新一次页面）。
+
+**从 zip**：把 `Shiyi-LoRA-Composer-1.0.0.zip` 解压到 `ComfyUI/custom_nodes/`（解压后应得到 `custom_nodes/Shiyi-LoRA-Composer/`），重启 ComfyUI。
+
+**LoRA 目录**：默认只扫 ComfyUI 自己的 `models/loras`。要同时列出 Forge / WebUI 的 LoRA，在 `config.json` 里填 `lora_roots`（数组，绝对路径）：
+
+```json
+{
+  "lora_roots": ["D:/sd-webui-forge/models/Lora"],
+  "default_strength": 0.8,
+  "scan_ttl": 30,
+  "auto_trigger": true
+}
+```
+
+## 四个节点
+
+| 节点 | 作用 |
+|---|---|
+| **模型加载器（Checkpoint / UNet / GGUF）** | 一个入口选三种分发方式；面板显示架构、精度/量化、大小、张量数、缩略图，输出 MODEL / CLIP / VAE |
+| **LoRA 编排器（多 LoRA · 说明 · 触发词）** | MODEL / CLIP → 依次套 N 个 LoRA，输出 MODEL、CLIP、TRIGGERS、TRIGGER_GROUPS |
+| **CLIP 文本编码（LoRA 触发词）** | clip + 提示词 → CONDITIONING；原生 text 框 + 「便携提示词添加」列表，点 LoRA 行打开说明段落页 |
+| **LoRA 触发词并入提示词** | 纯字符串版：把触发词去重后塞进正文前或后 |
+
+## 模型加载器
+
+三个来源共用一套面板：
+
+| 来源 | 目录 | 说明 |
+|---|---|---|
+| 完整模型 | `models/checkpoints` | 一次给全 MODEL + CLIP + VAE（模型自带什么给什么，缺的就是 None） |
+| UNet | `models/diffusion_models` + `models/unet` | 只给 MODEL，CLIP / VAE 用节点里的下拉另配 |
+| GGUF | 同上目录里的 `.gguf` | 走 ComfyUI-GGUF 的 `UnetLoaderGGUF`，需要装该插件（CPU 模式跑不动，要 GPU） |
+
+面板每行显示 **名称 + 精度徽标 + 文件大小**，点一行就写进「当前模型」；下方详情给 **缩略图（同目录 `<名字>.preview.png` 或 `<名字>.png`）、架构判断、格式·精度·张量数·体积、来源仓库（`.assets/manifest.json`）**。
+
+- **自动检测内置组件**：checkpoint 里带 CLIP / VAE 就直接用内置的，缺哪个才去加载手选的 `clip_name` / `vae_name`。判定看张量前缀（CLIP：`cond_stage_model.` / `conditioner.` / `te.` / `clip_l.` / `text_encoders.`；VAE：`first_stage_model.` / `vae.`），面板详情写 `内置：CLIP ✓ / VAE ✓（都用内置）` 或 `CLIP ✗ / VAE ✗（缺的手选补）`
+- **`clip_type` 默认 `auto`**：按模型架构自动选（`krea2` / `qwen_image` / `flux` / `stable_diffusion` / `moss_image` …），详情里显示 `auto → xxx`；想手动指定就改下拉
+- 架构按优先级取：safetensors/gguf 元数据（`modelspec.architecture` / `base_model` / `key_layout`）→ 文件名 → 张量名特征，详情里会标出用的是哪一路（`元数据` / `按张量名推断`）
+- 精度：metadata 的 `dtype_counts` → 张量 dtype 占比；GGUF 读 `GGMLQuantizationType`（Q8_0 / Q6_K / Q4_K_M …）
+- `clip_type` 下拉来自 `comfy.sd.CLIPType`（38 个），选错会加载失败，按模型族选（flux → `flux`，qwen → `qwen_image`，krea2 → `krea2`）
+- 新增模型文件后：面板点刷新即好；原生「当前模型」下拉要重启 ComfyUI 才会出现新条目
+
+## 触发词存在哪
+
+触发词是 **LoRA 自己的属性**，存在插件目录的 `triggers.json`（`{相对路径: 触发词}`，空串＝明确不要）：
+
+| 位置 | 职责 |
+|---|---|
+| LoRA 选择器（卡片墙）底部编辑栏 | **主入口**：鼠标指向卡片 → 编辑栏出现 → 改词 → 保存（已存的卡片右上角有绿点） |
+| 编排器行的 `i` 说明面板 | 次入口：点 chip / 全部填入 / 清空，同样写进 `triggers.json` |
+| CLIP 面板的列表 | **只读**展示触发词；点行打开说明、点段落整段插入 |
+
+添加 LoRA 时的取值顺序：**你存过的词** → civitai/`.txt` 自动识别 → **训练标签里出现次数最多的词**（跳过 `1girl`/`solo` 这类通用标签）→ 空。改词时，编排器里同名的行会一起同步。
+
+说明面板（行内 `i`）底部有 **「智能添加：<词>（训练 N 次）」** 按钮：直接取 `ss_tag_frequency` 里频次最高的词加进本行并写入 `triggers.json`，同时跳过通用标签。
+
+## 接线
+
+```
+CLIP 加载器 ──clip──┬──► LoRA 编排器 ──MODEL──► KSampler
+                   │           │
+                   │           ├──CLIP──────────────► CLIP 文本编码（正面）.clip
+                   │           └──TRIGGER_GROUPS───► CLIP 文本编码（正面）.triggers
+                   └──────────────────────────────► CLIP 文本编码（负面）.clip
+```
+
+负面那个编码器不接 `triggers` 即可（节点会提示“把 TRIGGER_GROUPS 接进来”，不影响出图）。
+
+## CLIP 文本编码怎么用
+
+这个节点就是**原版 CLIPTextEncode 加一块附加面板**：上面的 `text` 多行输入框保持原样（原生 widget，约 103px 高），提示词照常写。
+
+**核心体验**：往编排器里加一个 LoRA 时，它的触发词会**自动写进 `text` 框**（追加在末尾、自动补 `, `；已经有的词不重复写）。**把 LoRA 从编排器删掉时，只摘掉它当时自动写进去的那一个词**，你手写的提示词和其它词不动。加载已有工作流时只登记、不回写，也不会在之后误删你原来的提示词。右键菜单可关：`加 LoRA 时自动写入提示词：开/关`（关掉后自动删除也一并停用）。
+
+触发词来源两条，按顺序取：**`.txt` 里的 `触发词：`/`@词`** → **训练元数据 `ss_tag_frequency` 的最高频词**（跳过 `1girl`/`solo` 这类通用标签）→ 你在选择器里手存的词优先级最高。
+
+面板在 `text` 下面，只有 **一个标题 + 三组标签页**：
+
+```
+▾ 便携提示词添加
+  [LoRA] [常用 tag] [收藏]
+  ▼ anima/原神
+      冰之女皇                          移除
+```
+
+- **LoRA**（现状）：点某个 LoRA 那一行 → **在该行下方内联展开说明段落**（不弹窗）。段落 = 标题行（`：` 结尾）+ 下面那段标签；**点一段就把这一整段写进提示词框**（独占一行），再点一次移除。标 `否定` 的段落也会插，只是提示你它是负面用的。
+- **常用 tag**：本地标签库 `tags/zh_CN.yaml`（**3,981 条 / 11 个分类 / 150 组**，中英对照）。顶部搜索（中英都能搜，跨分类）、下面一排分类 chips（人物 / 服饰 / 表情动作 / 画面 / 环境 / 场景 / 物品 / 镜头 / 汉服 / 魔法系 / 反向提示词），组名可折叠；**点某个标签就插进提示词**。数据是复制进来的，可以直接改 `tags/zh_CN.yaml`，保存后重进页面即生效（后端按文件 mtime 缓存）。
+- **收藏**：自己的常用词库，存在 `favorites.json`，增删改查都在面板里完成：
+  - **分类**：chips 末尾 `＋` 输入名字回车新建；**右键分类** → 重命名 / 删除
+  - **条目**：`＋ 添加` 粘一串 tag 或整段 → 起名保存；每条显示**名称 + 两行内容预览**
+  - **插入**：点条目（含换行的按整段插入，否则逗号接末尾）
+  - **右键条目** → 插入到提示词 / 从提示词移除 / 编辑 / 删除（移除是按项删，不碰同行其它词）
+  - 删除后浮层带 **「撤销」**，6 秒内可恢复
+  - **搜索**：按名称或内容过滤，跨分类显示并标注所属分类
+
+标签库接口：`GET /shiyi_lora/tags`（返回 `{total, categories:[{name,count,groups:[{name,color,tags:[{tag,zh}]}]}]}`）。
+
+收藏接口：`GET /shiyi_lora/favorites` / `POST /shiyi_lora/favorites`，数据落在 `favorites.json`：
+
+```json
+{ "categories": [ { "name": "常用", "items": [ { "name": "表情", "text": "1girl, smile, looking at viewer" } ] } ] }
+```
+
+**数据流**：`tags/zh_CN.yaml` → 后端按 mtime 缓存解析 → 同时写一份静态快照 `web/tags.json`。前端优先读接口（能实时反映改过的 yaml）；后端没重启、接口不存在时自动回退读静态快照，所以刷新页面就能用。
+
+**插入有两种粒度**：
+
+- **单个 tag / 触发词** → 用逗号接在当前末尾：`masterpiece, 1girl, 1boy`
+- **LoRA 说明里的整段** → 独占一行（换行分隔），不跟别的词挤在一起
+
+同一段再点一次就是**移除**（按钮在「插入 / 移除」之间切换）。面板行悬停时右侧出现 **「移除」**：删掉以该触发词开头的整段行，以及同行里等于该词的那一项。
+
+**尺寸规则**：高度不锁，随便拖；多出来的空间自动给上面那个 `text` 输入框（拖多高它就多高）。展开/收起面板时会自动贴合一次内容高度（470 / 256）。
+
+- **收起态（默认）**：只有一条 `▸ 便携提示词添加`。
+- 点这条展开成列表：
+  - **说明（内联）**：点 LoRA 行就地展开这个 LoRA 的段落列表，右侧显示「点击插入 / 已插入 · 点击移除」。
+  - 列表按目录分组，组头可折叠；行内显示 LoRA 名 + 只读触发词。
+
+- 状态（展开/收起、当前页、选中项）存 `node.properties`，随工作流保存。
+
+**没连线也能看**：面板的数据源优先取 `triggers` 连线；没连线时自动引用当前图里第一个有启用行的「LoRA 编排器」，标题条会标 `（未连线）`，展开后照样列出 LoRA 与触发词，并在顶部给一条提示 + 「连接触发词」按钮（点一下就把编排器的 `TRIGGER_GROUPS` 连到 `triggers`，触发词才会真正进入编码）。
+
+**接错槽会被指出**：编排器有 `TRIGGERS`（扁平串）和 `TRIGGER_GROUPS`（带分组的表）两个输出。接到 `TRIGGERS` 时标题条标 `（接的是 TRIGGERS）`，并提示勾选不生效、附「改接 TRIGGER_GROUPS」按钮。
+
+**自动选中**：图里只有一个 LoRA 时面板会直接选中它，TXT 页立刻显示内容，不用先点列表。
+
+说明：原版 `text` widget 自带 `minNodeSize=[400,200]`，节点高度按这个下限算，所以文本域不会再被压成一行。`position`（触发词放正文前/后）与 `dedupe`（去重）不占界面，在节点右键菜单切换；`group_state` 是隐藏 widget。
+
+
+## 编排器怎么用
+
+- **+ 添加 LoRA**：弹窗是卡片墙 —— 每张卡片带预览图（懒加载）、名字、所属目录。
+  - 顶部筛选：**一级目录**（`anima` / `Illustrious` / `qwen` …）→ **二级目录**（`AA画风` / `原神` / `崩铁` …），两项都带数量统计。
+  - **排序**：目录+名称 / 名称 A→Z / 最近修改 / 体积从大到小 / 有预览优先。
+  - `仅看有预览` 勾选框 + 搜索框（名字或路径都能搜）。
+  - 单击＝替换当前行或追加新行；右键卡片＝追加为新行。
+- 每行控件：
+  - 左侧缩略图（跟着预览图走，未启用时半透明）
+  - `✔` 勾选框：临时启用/禁用，不用拆线
+  - `名字`：点一下＝换 LoRA
+  - `0.80`：**点一下直接在原地输入数字**（Enter 生效 / Esc 取消 / 点输入框外也提交）；输入时 `↑ ↓` 每次 ±0.05，`Shift+↑ ↓` 每次 ±0.01。批量回 1.0 用节点右键菜单「全部权重复位 1.0」。
+  - `i`：看完整说明 + 触发词候选 + 训练高频标签，点 chip 就地增删
+- 触发词不再放编排行上，统一在 **CLIP 文本编码** 的 LoRA 面板里管（见下）。
+- 节点右键菜单：全部启用/取消、刷新目录。
+- 只有 `启用` 且该行有触发词时，才会把词并进 `TRIGGERS` / `TRIGGER_GROUPS` 输出。
+
+## 排版说明
+
+节点顶部按输入/输出槽数量自动留白（`16 + max(输入,输出) * 20`），标题行与第一行卡片都从 socket 区下面开始，所以不会再压到 `模型 / CLIP / TRIGGERS` 的标签上。
+
+## 元数据来源（按优先级）
+
+1. `<名字>.txt` —— 自己写的说明（推荐权重、副作用、`触发词：@xxx`）
+2. `<名字>.metadata.json` —— civitai `trainedWords` / `base_model` / `tags`
+3. safetensors 头 —— `modelspec.*`、`ss_tag_frequency`（训练高频标签）
+4. `<名字>.png|jpeg|jpg|webp` —— 预览图
+
+触发词抽取认这几种写法：`触发词：…`、`Trigger words:`、`Tags (character): …`、`人物特征：…`、`服装：…`、以及 `@xxx` 形式的风格触发词。
+
+## 目录配置
+
+`config.json`：
+
+```json
+{
+  "lora_roots": ["D:/aizc/sd-webui-forge-aki-v1.0/models/Lora"],
+  "default_strength": 0.8,
+  "scan_ttl": 30,
+  "auto_trigger": true
+}
+```
+
+- `lora_roots`：额外 LoRA 根目录，`ComfyUI/models/loras` 始终会被扫描。
+- `scan_ttl`：目录扫描缓存秒数，新下的 LoRA 用节点右键「刷新 LoRA 目录」或弹窗「重新扫描目录」立刻生效。
+- `auto_trigger`：添加 LoRA 时自动带入识别到的触发词（你在 `triggers.json` 里存过的词优先级更高）。
+
+## 触发词文件
+
+`triggers.json`（插件目录，自动创建）：
+
+```json
+{
+  "anima/AA画风/real_skin.safetensors": "@m4tte",
+  "anima/eudie_v1.safetensors": "Shadowverse Eudie, metal hair ornament",
+  "anima/AA画风/@ix7.safetensors": ""
+}
+```
+
+- 键＝LoRA 相对路径（与编排器行里存的一致），值＝触发词；空串表示"明确不要触发词"。
+- 后端接口：`GET /shiyi_lora/triggers`，`POST /shiyi_lora/triggers`（`{name, words}` 或 `{triggers: {...}}`）。
+
+## 说明段落怎么切
+
+内联展开的段落由 `.txt` 自动解析：**以 `：`/`:` 结尾的短行当标题**，其后连续的标签行合成一段；段落必须像标签（含逗号 + 英文词）。叙述型 txt（如 `real_skin`）解析不出段落，页面只显示原文。后端接口带 `sections` 字段；后端没更新时前端会用同一套规则自己解析，效果一致。
+
+想自己定段落，就在 txt 旁边放一个同名 `*.sections.json`（优先级高于自动解析）：
+
+```json
+[
+  { "title": "全身", "text": "xxx, 1girl, solo, full body, ..." },
+  { "title": "不要的", "text": "chibi, text, logo", "negative": true }
+]
+```
+
+
+## HTTP 接口（前端用，也可自己 curl）
+
+- `GET /shiyi_lora/list[?refresh=1]` — 全部 LoRA（名字/目录/是否有预览与说明）
+- `GET /shiyi_lora/info?name=anima/eudie_v1.safetensors` — 单个 LoRA 的说明、触发词、标签
+- `GET /shiyi_lora/preview?name=…` — 预览图
+
+## 与旧工作流的对接
+
+`anima008.json` 里的 LoRA 行名（`anima\AA画风\real_skin.safetensors`）可以直接用，反斜杠会被归一化。找不到的文件会在控制台打 `LoRA not found, skipped: …` 并跳过，不会中断整次生成。
+
+## 调试
+
+浏览器控制台：`window.__shiyiLora`（`rowsOf` / `commit` / `openPicker` / `getInfo`）。
+
+
+
+
+

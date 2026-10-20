@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+__shot*.png
+
+# 本机数据，不进仓库
+config.json
+favorites.json
+triggers.json
+.secrets/
+*.log

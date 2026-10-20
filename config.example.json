@@ -1,0 +1,6 @@
+{
+  "lora_roots": [],
+  "default_strength": 0.8,
+  "scan_ttl": 30,
+  "auto_trigger": true
+}
