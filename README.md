@@ -171,7 +171,7 @@ CLIP 加载器 ──clip──┬──► LoRA 编排器 ──MODEL──► 
 
 ```json
 {
-  "lora_roots": ["D:/aizc/sd-webui-forge-aki-v1.0/models/Lora"],
+  "lora_roots": ["D:/path/to/sd-webui-forge/models/Lora"],
   "default_strength": 0.8,
   "scan_ttl": 30,
   "auto_trigger": true
@@ -224,6 +224,7 @@ CLIP 加载器 ──clip──┬──► LoRA 编排器 ──MODEL──► 
 ## 调试
 
 浏览器控制台：`window.__shiyiLora`（`rowsOf` / `commit` / `openPicker` / `getInfo`）。
+
 
 
 
