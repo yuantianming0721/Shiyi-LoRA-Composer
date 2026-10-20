@@ -8,6 +8,7 @@ from aiohttp import web
 from server import PromptServer
 
 from .favorites import load_favorites, save_favorites
+from .civitai import enrich, enrich_batch, missing_list
 from .model_catalog import find_preview, list_models
 from .tag_library import load_tags
 from .lora_catalog import (
@@ -62,6 +63,29 @@ def register_routes():
                 return web.FileResponse(stem + ext)
         return web.Response(status=404, text="no preview")
 
+    @routes.get("/shiyi_lora/missing")
+    async def shiyi_lora_missing(request):
+        limit = int(request.query.get("limit", "500"))
+        items = missing_list(limit)
+        return _json(
+            {
+                "count": len(items),
+                "no_preview": sum(1 for item in items if item["no_preview"]),
+                "no_txt": sum(1 for item in items if item["no_txt"]),
+                "items": items,
+            }
+        )
+
+    @routes.post("/shiyi_lora/enrich")
+    async def shiyi_lora_enrich(request):
+        payload = await request.json()
+        return _json(enrich(str(payload.get("name") or "")))
+
+    @routes.post("/shiyi_lora/enrich_batch")
+    async def shiyi_lora_enrich_batch(request):
+        payload = await request.json()
+        return _json(enrich_batch(payload.get("names") or [], int(payload.get("limit", 8))))
+
     @routes.get("/shiyi_model/list")
     async def shiyi_model_list(request):
         return _json(list_models())
@@ -115,6 +139,7 @@ def register_routes():
         except OSError as exc:
             return _json({"error": str(exc)}, 500)
         return _json({"ok": True, "count": len(store)})
+
 
 
 

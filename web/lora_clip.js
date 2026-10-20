@@ -44,6 +44,46 @@ async function getInfo(name) {
   return info;
 }
 
+async function enrichLora(node, name) {
+  toast("查询 Civitai…");
+  try {
+    const res = await api.fetchApi("/shiyi_lora/enrich", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json();
+    INFO_CACHE.delete(name);
+    if (!data.ok) {
+      toast(data.error || "Civitai 上没有这个文件");
+      return;
+    }
+    const written = (data.written || []).filter((file) => !file.endsWith(".metadata.json"));
+    toast(written.length ? `已补：${written.join("、")}` : "查到模型，但没有可写的说明或图片");
+    apply(node);
+  } catch (error) {
+    toast(`补全失败：${error.message}`);
+  }
+}
+
+async function enrichBatch(node, names) {
+  const picked = names.slice(0, 8);
+  toast(`逐个补 ${picked.length} 个，可能要等一会儿…`);
+  try {
+    const res = await api.fetchApi("/shiyi_lora/enrich_batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ names: picked, limit: 8 }),
+    });
+    const data = await res.json();
+    names.forEach((name) => INFO_CACHE.delete(name));
+    toast(`补全：成功 ${(data.done || []).length}，未命中 ${(data.failed || []).length}`);
+    apply(node);
+  } catch (error) {
+    toast(`批量补全失败：${error.message}`);
+  }
+}
+
 function previewUrl(name) {
   const path = `/shiyi_lora/preview?name=${encodeURIComponent(name)}`;
   return api.apiURL ? api.apiURL(path) : path;
@@ -178,6 +218,8 @@ function ensureStyle() {
   .shiyi-lp-chip.add{color:#8fc4ff;border-style:dashed}
   .shiyi-lp-toast-btn{color:#8fc4ff;cursor:pointer;border-bottom:1px dashed #3a689a;padding-bottom:1px}
   .shiyi-lp-toast-btn:hover{color:#fff}
+  .shiyi-lp-badge{margin-left:4px;font-size:9.5px;color:#d8b26a;border:1px solid #4a3d26;
+    background:#2a2418;border-radius:3px;padding:0 3px;line-height:13px;flex:0 0 auto}
   .shiyi-lp-btn.danger{color:#ff9a9a;border-color:#5a2a2e;background:#3a2224}
   .shiyi-lp-favbar{display:flex;align-items:center;justify-content:space-between;gap:6px;flex:0 0 auto;
     background:#1a1a22;border:1px solid #2b2b35;border-radius:5px;padding:2px 7px}
@@ -1211,6 +1253,25 @@ function renderWords(node, rows) {
       else lp.collapsed.add(folder);
       apply(node);
     };
+    head.oncontextmenu = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const names = items.map((item) => item.name);
+      showFavMenu(
+        [
+          { label: `补全本组缺失（最多 8 个）`, run: () => enrichBatch(node, names) },
+          {
+            label: "重新读取本组信息",
+            run: () => {
+              names.forEach((name) => INFO_CACHE.delete(name));
+              apply(node);
+            },
+          },
+        ],
+        event.clientX,
+        event.clientY
+      );
+    };
     box.appendChild(head);
 
     if (collapsed) {
@@ -1237,12 +1298,43 @@ function renderWords(node, rows) {
         toast(removed ? `已移除 ${removed} 块` : "提示词里没有含这个词的块");
       };
       rowEl.append(nameEl, delBtn);
-      rowEl.title = "点开展示说明段落，再点段落整段插入";
+      rowEl.title = "点开展示说明段落，再点段落整段插入；右键可从 Civitai 补封面与说明";
       rowEl.onclick = () => {
         props.selectedLora = item.name;
         node.__docFor = node.__docFor === item.name ? null : item.name;
         apply(node);
       };
+      rowEl.oncontextmenu = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        showFavMenu(
+          [
+            {
+              label: "补封面与说明（Civitai）",
+              run: () => enrichLora(node, item.name),
+            },
+            {
+              label: "重新读取信息",
+              run: () => {
+                INFO_CACHE.delete(item.name);
+                apply(node);
+              },
+            },
+          ],
+          event.clientX,
+          event.clientY
+        );
+      };
+      getInfo(item.name)
+        .then((info) => {
+          if (!rowEl.isConnected || !info || info.error) return;
+          if (!info.has_txt) {
+            const badge = el("span", "shiyi-lp-badge", "无说明");
+            badge.title = "没有找到说明 txt，右键可从 Civitai 抓取";
+            nameEl.after(badge);
+          }
+        })
+        .catch(() => {});
       box.appendChild(rowEl);
       if (node.__docFor === item.name) box.appendChild(docBlock(node, item));
     }

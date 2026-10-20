@@ -17,7 +17,7 @@ import struct
 import time
 
 LORA_EXTS = (".safetensors", ".ckpt", ".pt", ".pth", ".sft")
-IMAGE_EXTS = (".png", ".jpeg", ".jpg", ".webp")
+IMAGE_EXTS = (".png", ".preview.png", ".jpeg", ".jpg", ".webp", ".preview.jpg")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "config.json")
@@ -128,8 +128,8 @@ def _scan_root(root, items, seen):
                 "path": full.replace("\\", "/"),
                 "size": size,
                 "mtime": mtime,
-                "preview": any(os.path.exists(stem + ext) for ext in IMAGE_EXTS),
-                "txt": os.path.exists(stem + ".txt"),
+                "preview": any(os.path.exists(base + ext) for base in (stem, full) for ext in IMAGE_EXTS),
+                "txt": any(os.path.exists(base + ".txt") for base in (stem, full)),
             })
 
 
@@ -147,6 +147,13 @@ def list_loras(force=False):
     items.sort(key=lambda item: (item["folder"].lower(), item["label"].lower()))
     _scan.update(stamp=now, items=items, roots=[r.replace("\\", "/") for r in roots])
     return items, _scan["roots"]
+
+
+def invalidate():
+    """文件被外部改动（补图/补说明）后清缓存，下次扫描重新读盘。"""
+    _scan["items"] = []
+    _scan["stamp"] = 0
+    _info_cache.clear()
 
 
 def resolve_lora(name):
@@ -384,8 +391,13 @@ def read_info(name):
         return cached
 
     stem = os.path.splitext(path)[0]
-    txt_path = stem + ".txt"
-    meta_path = stem + ".metadata.json"
+    # 两种旁挂命名：xxx.txt（A1111/主流）与 xxx.safetensors.txt（整包分发的常见写法）
+    sidecars = (stem, path)
+    txt_path = next((base + ".txt" for base in sidecars if os.path.exists(base + ".txt")), stem + ".txt")
+    meta_path = next(
+        (base + ".metadata.json" for base in sidecars if os.path.exists(base + ".metadata.json")),
+        stem + ".metadata.json",
+    )
 
     description, notes, civitai = "", "", {}
     meta_json = {}
@@ -454,7 +466,7 @@ def read_info(name):
         "folder": _relative_root_folder(path),
         "size": size,
         "mtime": mtime,
-        "preview": any(os.path.exists(stem + ext) for ext in IMAGE_EXTS),
+        "preview": any(os.path.exists(base + ext) for base in sidecars for ext in IMAGE_EXTS),
         "has_txt": os.path.exists(txt_path),
         "base_model": base_model,
         "title": str(meta_json.get("model_name") or header.get("modelspec.title") or header.get("ss_output_name") or "").strip(),
@@ -505,3 +517,7 @@ if __name__ == "__main__":
         print("triggers  :", info.get("triggers"))
         print("top_tags  :", (info.get("top_tags") or [])[:10])
         print("desc      :", (info.get("description") or "")[:160].replace("\n", " / "))
+
+
+
+

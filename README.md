@@ -22,6 +22,7 @@
 | 本地词库 | 内置 3,981 条中文 Danbooru 标签，11 分类 150 组，可搜索 |
 | 收藏夹 | 自建分类与条目，增删改查齐全，删除可撤销 |
 | 触发词持久化 | 存在 `triggers.json`，跟 LoRA 走，重载工作流不丢 |
+| 缺封面自动补 | 右键 LoRA 从 Civitai 按哈希取封面与说明；分组右键可批量补 |
 
 ## 安装
 
@@ -191,6 +192,42 @@ CLIP 加载器 ──clip──┬──► LoRA 编排器 ──MODEL──► 
 4. `<名字>.png|jpeg|jpg|webp` —— 预览图
 
 触发词抽取认这几种写法：`触发词：…`、`Trigger words:`、`Tags (character): …`、`人物特征：…`、`服装：…`、以及 `@xxx` 形式的风格触发词。
+
+## LoRA 没有封面 / 说明怎么办
+
+面板读的是 LoRA 文件**同目录**的旁挂文件，两种命名都认（`xxx` 指去掉扩展名的文件名）：
+
+| 旁挂文件 | 作用 |
+|---|---|
+| `xxx.png`、`xxx.preview.png` | 封面缩略图 |
+| `xxx.txt`、`xxx.safetensors.txt` | 说明文本；含「触发词：」的段落会被解析成可点击段落 |
+| `xxx.metadata.json` | 结构化信息：`trainedWords`（触发词首选来源）、`base_model`、`tags`、`model_name` |
+
+### 一键从 Civitai 补
+
+1. 打开「懒人的 CLIP 文本编码」的 **LoRA** 页
+2. **右键某个 LoRA** → 「补封面与说明（Civitai）」
+   插件算出文件 SHA256 的前 10 位，用它查 Civitai 的版本，然后写三样东西：
+   - `xxx.png` —— 第一张非 NSFW 图（宽 512）
+   - `xxx.txt` —— 触发词段 + 模型说明
+   - `xxx.metadata.json` —— `trainedWords`、`base_model`、Civitai 链接
+3. **右键分组标题** → 「补全本组缺失（最多 8 个）」，一次补一批（每个之间停 1 秒）
+
+已经存在的图或 txt **不会被覆盖**，只在缺的时候写。
+
+### 几个前提
+
+- 要能访问 `civitai.com`。默认走 `127.0.0.1:7890` 代理，改法：`config.json` 里加 `"civitai_proxy": "http://127.0.0.1:7891"`，写空串则直连
+- 查不到通常是因为文件被自己合并/重打包过（哈希变了），或作者没发到 Civitai
+- 第一次给大文件算哈希要读完整文件（1 GB 约十几秒），结果缓存在 `civitai_hashes.json`，之后秒回
+- 也能手动补：图存成 `xxx.png`，说明存成 `xxx.txt`，格式：
+  ```
+  触发词：
+  word1, word2
+
+  否定提示词（Negative）：
+  low quality, bad hands
+  ```
 
 ## 目录配置
 
