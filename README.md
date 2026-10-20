@@ -1,18 +1,45 @@
-# Shiyi LoRA Composer
+# Shiyi LoRA Composer · 懒人节点包
 
-一个节点装下整条 LoRA 链，替代 `LoraLoader|pysssss` 串联 + notes 堆画布的做法。
+四颗 ComfyUI 自定义节点，把「选模型 → 堆 LoRA → 写提示词」这三件重复劳动各收进一个面板，不用再在画布上串一长排 loader 和一叠 note。
+
+- **模型加载器** — Checkpoint / UNet / GGUF 一个下拉搞定；自动认出模型自带的 CLIP / VAE，缺哪个才让你补；面板直接给架构、精度或量化、体积、缩略图
+- **LoRA 编排器** — 一个节点套 N 个 LoRA，每个 LoRA 的说明段落和触发词就在面板里，点一下插进提示词
+- **CLIP 文本编码** — 原生 textarea 不动，下方挂「便携提示词添加」：LoRA 说明 / 常用 tag / 收藏 三个标签页
+- **触发词并入提示词** — 纯字符串版，去重后塞进正文前或后
+
+中文界面、深色紧凑、不弹窗挡视野；删除带撤销，条目操作走右键菜单。
+
+## 特性
+
+| | |
+|---|---|
+| 模型来源统一 | checkpoint、`diffusion_models`、`unet`、`.gguf` 混在一个列表里按目录分组 |
+| 自动补 CLIP / VAE | 读张量前缀判内置（`conditioner.` / `te.` / `first_stage_model.` / `vae.` …），内置优先，缺的才用手选 |
+| `clip_type` 自动 | 按架构推导 `krea2` / `qwen_image` / `flux` / `moss_image` / `ltxv` …，也能手动覆盖 |
+| 元数据直读 | 只读 safetensors / GGUF 头部，不加载权重就能给出精度、张量数、架构，并标注判断来源（元数据 / 文件名 / 张量名） |
+| 缩略图 | 认 `<名字>.preview.png`、`<名字>.png`、`.assets/preview.png` |
+| 提示词两粒度 | 单个 tag 用逗号接成一行；LoRA 说明整段独占一行 |
+| 本地词库 | 内置 3,981 条中文 Danbooru 标签，11 分类 150 组，可搜索 |
+| 收藏夹 | 自建分类与条目，增删改查齐全，删除可撤销 |
+| 触发词持久化 | 存在 `triggers.json`，跟 LoRA 走，重载工作流不丢 |
 
 ## 安装
 
-**本机**：目录已经在 `custom_nodes/Shiyi-LoRA-Composer`，重启 ComfyUI 即可（新节点要重启，前端再刷新一次页面）。
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/yuantianming0721/Shiyi-LoRA-Composer
+```
 
-**从 zip**：把 `Shiyi-LoRA-Composer-1.0.0.zip` 解压到 `ComfyUI/custom_nodes/`（解压后应得到 `custom_nodes/Shiyi-LoRA-Composer/`），重启 ComfyUI。
+或下载 zip 解压到 `custom_nodes/`（应得到 `custom_nodes/Shiyi-LoRA-Composer/`），重启 ComfyUI，前端再 Ctrl+F5 一次。
+
+可选：**ComfyUI-GGUF** —— 只在要加载 `.gguf` 时需要。
+可选：把 `config.example.json` 复制成 `config.json`，按需改 LoRA 扫描目录。
 
 **LoRA 目录**：默认只扫 ComfyUI 自己的 `models/loras`。要同时列出 Forge / WebUI 的 LoRA，在 `config.json` 里填 `lora_roots`（数组，绝对路径）：
 
 ```json
 {
-  "lora_roots": ["D:/sd-webui-forge/models/Lora"],
+  "lora_roots": ["D:/path/to/sd-webui-forge/models/Lora"],
   "default_strength": 0.8,
   "scan_ttl": 30,
   "auto_trigger": true
