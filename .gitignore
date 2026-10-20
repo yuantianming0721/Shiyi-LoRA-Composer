@@ -9,3 +9,4 @@ favorites.json
 triggers.json
 .secrets/
 *.log
+civitai_hashes.json
