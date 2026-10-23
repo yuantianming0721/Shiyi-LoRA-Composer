@@ -1373,7 +1373,16 @@ function fit(node) {
   node.setSize([width, targetHeight(node)]);
 }
 
+function normalizeHidden(node) {
+  // 旧工作流里这两个隐藏 widget 存过空串，纠正回默认值，重新保存后工作流就干净了
+  const pos = node.widgets?.find((item) => item.name === "position");
+  if (pos && pos.value !== "before" && pos.value !== "after") pos.value = "before";
+  const dedupe = node.widgets?.find((item) => item.name === "dedupe");
+  if (dedupe && typeof dedupe.value !== "boolean") dedupe.value = true;
+}
+
 function attach(node) {
+  normalizeHidden(node);
   for (const name of ["group_state", "position", "dedupe"]) {
     const widget = node.widgets?.find((item) => item.name === name);
     if (!widget) continue;
@@ -1463,6 +1472,7 @@ app.registerExtension({
       fit(this);
       this.setDirtyCanvas(true, true);
       setTimeout(() => {
+        normalizeHidden(this);
         ensurePanel(this);
         apply(this);
         fit(this);

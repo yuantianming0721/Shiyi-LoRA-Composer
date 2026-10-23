@@ -86,6 +86,8 @@ def merge_words(text, words, position="before", dedupe=True):
         words = unique
     if not words:
         return text
+    if position not in ("before", "after"):
+        position = "before"
     extra = ", ".join(words)
     joined = f"{extra}, {text}" if position == "before" else f"{text}, {extra}"
     return joined.strip(", ").strip()
@@ -160,7 +162,8 @@ class ShiyiLoraClipEncode:
             "optional": {
                 "triggers": ("STRING", {"default": "", "forceInput": True}),
                 "group_state": ("STRING", {"default": "{}", "multiline": False}),
-                "position": (["before", "after"], {"default": "before"}),
+                # 旧工作流里存过空串，保留一个空选项让它能通过校验，执行时按 before 处理
+                "position": (["before", "after", ""], {"default": "before"}),
                 "dedupe": ("BOOLEAN", {"default": True}),
             },
         }
