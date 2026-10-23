@@ -62,9 +62,27 @@ async function saveTrigger(name, words) {
 /* ------------------------------------------------------------------ data */
 
 async function fetchJson(path) {
-  const res = await api.fetchApi(path, { cache: "no-store" });
-  if (!res.ok) throw new Error(`${path} -> HTTP ${res.status}`);
-  return res.json();
+  let res;
+  try {
+    res = await api.fetchApi(path, { cache: "no-store" });
+  } catch (error) {
+    // fetch 本身失败（服务端断连、浏览器拦截）：把真实原因带出来，别只显示「获取失败」
+    throw new Error(`${path} 连不上：${error?.message || error}`);
+  }
+  if (!res.ok) {
+    let body = "";
+    try {
+      body = (await res.text()).slice(0, 120).replace(/\s+/g, " ");
+    } catch (error) {
+      body = "";
+    }
+    throw new Error(`${path} -> HTTP ${res.status}${body ? `：${body}` : ""}`);
+  }
+  try {
+    return await res.json();
+  } catch (error) {
+    throw new Error(`${path} 返回的不是 JSON：${error?.message || error}`);
+  }
 }
 
 async function loadCatalog(force = false) {
@@ -829,7 +847,15 @@ async function openPicker(node, replaceIndex) {
     rebuildSubs();
     render();
   } catch (error) {
-    countLabel.textContent = `加载失败：${error.message}`;
+    countLabel.textContent = `加载失败：${error.message}（点这里重试）`;
+    countLabel.style.cursor = "pointer";
+    countLabel.onclick = () => {
+      countLabel.onclick = null;
+      countLabel.style.cursor = "";
+      STATE.loras = null;
+      STATE.loading = null;
+      openPicker(node, replaceIndex);
+    };
   }
 
   topSel.onchange = () => {
