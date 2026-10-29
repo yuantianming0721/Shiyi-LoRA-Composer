@@ -77,6 +77,12 @@ function ensureStyle() {
   .shiyi-ml-meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;font-size:10.5px;color:#9a9aa8}
   .shiyi-ml-meta .k{color:#6d6d7a}
   .shiyi-ml-meta .v{color:#dcdce4}
+  .shiyi-ml-flag{flex:0 0 auto;font-size:8.5px;line-height:1.5;padding:0 3px;border-radius:3px;
+    background:#1d3a26;border:1px solid #2f6b40;color:#7fd39a}
+  .shiyi-ml-props{flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px;margin-top:2px}
+  .shiyi-ml-props .tag{flex:0 0 auto;font-size:9.5px;line-height:1.5;padding:0 5px;border-radius:3px;
+    background:#1d3a26;border:1px solid #2f6b40;color:#7fd39a}
+  .shiyi-ml-props .tag.off{background:#26262f;border-color:#3a3a46;color:#82828f}
   .shiyi-ml-hint{color:#6d6d7a;font-size:11px;padding:6px;text-align:center}
   `;
   document.head.appendChild(style);
@@ -190,16 +196,20 @@ function renderDetail(node, item) {
   line("架构", `${item.arch}（${item.arch_hint}）`);
   line("规格", `${item.format} · ${item.precision} · ${(item.tensors || 0).toLocaleString()} 张量 · ${item.size_text}`);
   if (item.repo) line("来源", `${item.repo}${item.component ? ` / ${item.component}` : ""}`);
-  if (item.kind === "checkpoint") {
-    const clip = item.bundled_clip ? "CLIP ✓" : "CLIP ✗";
-    const vae = item.bundled_vae ? "VAE ✓" : "VAE ✗";
-    const miss = (!item.bundled_clip || !item.bundled_vae) ? "（缺的手选补）" : "（都用内置）";
-    line("内置", `${clip} / ${vae} ${miss}`);
-  } else {
-    line("提示", "无内置 CLIP / VAE，用下拉另配");
-  }
   if (item.clip_type) line("CLIP 类型", `auto → ${item.clip_type}`);
   box.appendChild(meta);
+
+  const props = el("div", "shiyi-ml-props");
+  const tag = (text, on, why) => {
+    const node = el("span", "tag" + (on ? "" : " off"), `${text} ${on ? "✓" : "✗"}`);
+    node.title = why;
+    return node;
+  };
+  props.append(
+    tag("自带 CLIP", item.bundled_clip, item.bundled_clip ? "模型里含文本编码器，不用外接" : "需要用 clip_name 外接"),
+    tag("自带 VAE", item.bundled_vae, item.bundled_vae ? "模型里含 VAE，不用外接" : "需要用 vae_name 外接")
+  );
+  box.appendChild(props);
 
   if (item.notes) {
     const notes = el("div", "shiyi-ml-notes", item.notes);
@@ -308,12 +318,19 @@ function render(node) {
         row.classList.add("on");
         renderDetail(node, item);
       }
-      row.append(
-        el("span", "name", item.label || item.name),
-        el("span", "badge", item.precision),
-        el("span", "size", item.size_text)
-      );
-      row.title = `${item.name}\n架构：${item.arch}（${item.arch_hint}）`;
+      row.append(el("span", "name", item.label || item.name));
+      if (item.bundled_clip) {
+        const flag = el("span", "shiyi-ml-flag", "CLIP");
+        flag.title = "自带 CLIP（无需外接）";
+        row.appendChild(flag);
+      }
+      if (item.bundled_vae) {
+        const flag = el("span", "shiyi-ml-flag", "VAE");
+        flag.title = "自带 VAE（无需外接）";
+        row.appendChild(flag);
+      }
+      row.append(el("span", "badge", item.precision), el("span", "size", item.size_text));
+      row.title = `${item.name}\n架构：${item.arch}（${item.arch_hint}）\n自带 CLIP：${item.bundled_clip ? "是" : "否"}　自带 VAE：${item.bundled_vae ? "是" : "否"}`;
       row.onclick = () => {
         applySelection(node, item);
         render(node);
