@@ -2,7 +2,9 @@ import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
 const NODE_NAME = "ShiyiModelLoader";
-const PANEL_H = 300;
+const PANEL_H = 360;          // 首次放置时面板给的高度
+const WIDGET_OFFSET = 216;    // 标题 + 四个下拉占掉的固定高度，面板高度 = 节点高 - 这个
+const MIN_PANEL_H = 150;
 
 const TABS = [
   { id: "checkpoint", label: "完整模型" },
@@ -49,7 +51,7 @@ function ensureStyle() {
   .shiyi-ml-search{flex:0 0 auto;background:#14141a;border:1px solid #33333d;border-radius:5px;color:#dcdce4;
     padding:3px 7px;font-size:11.5px;outline:none}
   .shiyi-ml-search:focus{border-color:#6fb3ff}
-  .shiyi-ml-list{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:2px}
+  .shiyi-ml-list{flex:1 1 160px;min-height:130px;overflow-y:auto;display:flex;flex-direction:column;gap:2px}
   .shiyi-ml-list::-webkit-scrollbar{width:9px}
   .shiyi-ml-list::-webkit-scrollbar-thumb{background:#3b3b48;border-radius:5px}
   .shiyi-ml-list::-webkit-scrollbar-track{background:transparent}
@@ -135,7 +137,11 @@ function buildPanel(node) {
     getValue: () => "",
     setValue: () => {},
   });
-  widget.computeSize = (width) => [width, root.classList.contains("collapsed") ? 34 : PANEL_H];
+  widget.computeSize = (width) => {
+    if (root.classList.contains("collapsed")) return [width, 34];
+    const nodeHeight = node.size?.[1] || PANEL_H + WIDGET_OFFSET;
+    return [width, Math.max(MIN_PANEL_H, nodeHeight - WIDGET_OFFSET)];
+  };
 
   node.__ml = { root, bar, arrow, current, tabs, search, list, detail, seriesSel, sortSel, collapsed: false, kind: "checkpoint", keyword: "", series: "", sort: "name" };
 
@@ -150,8 +156,17 @@ function buildPanel(node) {
 }
 
 function resize(node) {
-  const panel = node.__ml?.collapsed ? 34 : PANEL_H;
-  node.setSize([Math.max(460, node.size?.[0] || 460), panel + 216]);
+  // 折叠只缩到标题栏；展开时恢复折叠前的高度，不覆盖用户拉出来的尺寸
+  const ui = node.__ml;
+  if (!ui) return;
+  let height;
+  if (ui.collapsed) {
+    ui.expandedHeight = Math.max(node.size?.[1] || 0, MIN_PANEL_H + WIDGET_OFFSET);
+    height = WIDGET_OFFSET + 34;
+  } else {
+    height = Math.max(ui.expandedHeight || PANEL_H + WIDGET_OFFSET, MIN_PANEL_H + WIDGET_OFFSET);
+  }
+  node.setSize([Math.max(460, node.size?.[0] || 460), height]);
 }
 
 function modelWidget(node) {
@@ -368,9 +383,24 @@ app.registerExtension({
       ui.search.addEventListener("keydown", (event) => event.stopPropagation());
       const select = modelWidget(this);
       if (select) select.label = "当前模型";
+      const onResize = this.onResize;
+      this.onResize = function () {
+        onResize?.apply(this, arguments);
+        if (!this.__ml || this.__ml.collapsed) return;
+        const minHeight = MIN_PANEL_H + WIDGET_OFFSET;
+        if (this.size[1] < minHeight) this.setSize([this.size[0], minHeight]);
+        this.setDirtyCanvas(true, false);
+      };
       refresh(this);
       setTimeout(() => {
-        if (this.size[0] < 460) this.setSize([460, Math.max(this.size[1], PANEL_H + 170)]);
+        const width = Math.max(460, this.size[0]);
+        if (!this.__ml?.sized) {
+          if (this.__ml) this.__ml.sized = true;
+          this.setSize([width, Math.max(this.size[1], PANEL_H + WIDGET_OFFSET)]);
+        } else if (this.size[0] < 460 || this.size[1] < MIN_PANEL_H + WIDGET_OFFSET) {
+          this.setSize([width, Math.max(this.size[1], MIN_PANEL_H + WIDGET_OFFSET)]);
+        }
+        this.setDirtyCanvas(true, false);
       }, 80);
     };
 
