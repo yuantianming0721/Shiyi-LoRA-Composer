@@ -48,7 +48,7 @@ function ensureStyle() {
     font-size:11px;cursor:pointer;white-space:nowrap;user-select:none}
   .shiyi-ml-tab:hover{color:#dcdce4}
   .shiyi-ml-tab.on{background:#24405e;border-color:#3a689a;color:#cfe6ff}
-  .shiyi-ml-search{flex:0 0 auto;background:#14141a;border:1px solid #33333d;border-radius:5px;color:#dcdce4;
+  .shiyi-ml-search{flex:1 1 auto;min-width:0;background:#14141a;border:1px solid #33333d;border-radius:5px;color:#dcdce4;
     padding:3px 7px;font-size:11.5px;outline:none}
   .shiyi-ml-search:focus{border-color:#6fb3ff}
   .shiyi-ml-list{flex:1 1 160px;min-height:130px;overflow-y:auto;display:flex;flex-direction:column;gap:2px}
@@ -115,7 +115,11 @@ function buildPanel(node) {
   const filters = el("div", "shiyi-ml-filters");
   const seriesSel = document.createElement("select");
   seriesSel.className = "shiyi-ml-select";
-  seriesSel.title = "按系列筛选";
+  seriesSel.title = "按系列（子目录）筛选";
+  const archSel = document.createElement("select");
+  archSel.className = "shiyi-ml-select";
+  archSel.title = "按模型类型筛选";
+  const filters2 = el("div", "shiyi-ml-filters");
   const sortSel = document.createElement("select");
   sortSel.className = "shiyi-ml-select";
   sortSel.title = "排序方式";
@@ -125,10 +129,11 @@ function buildPanel(node) {
     option.textContent = label;
     sortSel.appendChild(option);
   }
-  filters.append(seriesSel, sortSel);
+  filters.append(seriesSel, archSel);
+  filters2.append(sortSel, search);
   const list = el("div", "shiyi-ml-list");
   const detail = el("div", "shiyi-ml-detail");
-  body.append(tabs, filters, search, list, detail);
+  body.append(tabs, filters, filters2, list, detail);
   root.append(bar, body);
 
   const widget = node.addDOMWidget("model_panel", "shiyi_panel", root, {
@@ -143,7 +148,7 @@ function buildPanel(node) {
     return [width, Math.max(MIN_PANEL_H, nodeHeight - WIDGET_OFFSET)];
   };
 
-  node.__ml = { root, bar, arrow, current, tabs, search, list, detail, seriesSel, sortSel, collapsed: false, kind: "checkpoint", keyword: "", series: "", sort: "name" };
+  node.__ml = { root, bar, arrow, current, tabs, search, list, detail, seriesSel, archSel, sortSel, collapsed: false, kind: "checkpoint", keyword: "", series: "", arch: "", sort: "name" };
 
   bar.onclick = () => {
     node.__ml.collapsed = !node.__ml.collapsed;
@@ -268,6 +273,34 @@ function refreshSeries(node, pool) {
   };
 }
 
+function refreshArch(node, pool) {
+  const ui = node.__ml;
+  const counts = new Map();
+  for (const item of pool) counts.set(item.arch, (counts.get(item.arch) || 0) + 1);
+  if (ui.arch && !counts.has(ui.arch)) ui.arch = "";
+
+  const signature = [...counts.keys()].sort().join("\u0000");
+  if (ui.archSignature === signature) return;
+  ui.archSignature = signature;
+
+  ui.archSel.replaceChildren();
+  const options = [["", `全部类型（${pool.length}）`]];
+  for (const arch of [...counts.keys()].sort((a, b) => a.localeCompare(b, "zh"))) {
+    options.push([arch, `${arch}（${counts.get(arch)}）`]);
+  }
+  for (const [value, label] of options) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    ui.archSel.appendChild(option);
+  }
+  ui.archSel.value = ui.arch;
+  ui.archSel.onchange = () => {
+    ui.arch = ui.archSel.value;
+    render(node);
+  };
+}
+
 function render(node) {
   const ui = node.__ml;
   const data = node.__data;
@@ -286,6 +319,7 @@ function render(node) {
     btn.onclick = () => {
       ui.kind = tab.id;
       ui.seriesSignature = null;
+      ui.archSignature = null;
       render(node);
     };
     ui.tabs.appendChild(btn);
@@ -293,10 +327,12 @@ function render(node) {
 
   const pool = data[ui.kind] || [];
   refreshSeries(node, pool);
+  refreshArch(node, pool);
 
   const keyword = ui.keyword.trim().toLowerCase();
   const items = pool.filter((item) => {
     if (ui.series && (item.folder || "") !== ui.series) return false;
+    if (ui.arch && item.arch !== ui.arch) return false;
     if (!keyword) return true;
     return (
       String(item.name).toLowerCase().includes(keyword) ||
