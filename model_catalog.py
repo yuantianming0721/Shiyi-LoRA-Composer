@@ -161,11 +161,16 @@ def _arch_from_text(values):
 
 
 def _arch_from_tensors(names):
+    # 全靠张量名认族，从最有辨识度的签名排到最宽的兜底
     joined = "\n".join(names)
     if "cap_embedder." in joined:
         return "Z-Image"
+    if "img_in." in joined and "txt_in." in joined:
+        return "Qwen-Image"
     if "adaln_modulation_cross_attn." in joined or "adaln_modulation_mlp." in joined:
         return "anima"
+    if "joint_blocks." in joined or "context_pre_only" in joined:
+        return "SD3"
     if "double_blocks." in joined or "single_blocks." in joined:
         return "Flux 系"
     if "label_emb." in joined:
@@ -173,7 +178,7 @@ def _arch_from_tensors(names):
     if "input_blocks." in joined:
         return "SD1.x"
     if "transformer_blocks." in joined:
-        return "SD3 / DiT 系"
+        return "DiT 系"
     return None
 
 
@@ -261,7 +266,6 @@ def _entry(kind, name):
 
     notes = _read_notes(path)
     text_values = [
-        notes[:200],
         meta.get("modelspec.architecture"),
         meta.get("modelspec.title"),
         meta.get("base_model"),
@@ -272,6 +276,9 @@ def _entry(kind, name):
     ]
     arch = _arch_from_text(text_values)
     arch_hint = "元数据"
+    if not arch:
+        arch = _arch_from_text([notes[:200]])
+        arch_hint = "按说明文字"
     if not arch:
         arch = _arch_from_tensors(names)
         arch_hint = "按张量名推断"
