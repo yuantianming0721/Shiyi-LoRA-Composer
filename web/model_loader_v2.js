@@ -65,7 +65,7 @@ function ensureStyle() {
     padding:0 3px;line-height:13px}
   .shiyi-ml-row .size{flex:0 0 auto;font-size:10px;color:#6d6d7a}
   .shiyi-ml-filters{flex:0 0 auto;display:flex;gap:5px;padding:0 2px}
-  .shiyi-ml-select{flex:1 1 0;min-width:0;background:#14141a;border:1px solid #33333d;border-radius:5px;color:#dcdce4;
+  .shiyi-ml-select{flex:1 1 auto;min-width:86px;background:#14141a;border:1px solid #33333d;border-radius:5px;color:#dcdce4;
     font-size:11px;padding:1px 4px;outline:none;font-family:inherit}
   .shiyi-ml-select:focus{border-color:#6fb3ff}
   .shiyi-ml-notes{position:relative;flex:1 1 100%;width:100%;max-height:96px;overflow:hidden;color:#a8a8b6;
