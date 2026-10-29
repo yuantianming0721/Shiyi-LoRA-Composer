@@ -149,8 +149,9 @@ class ShiyiLoraStack:
 class ShiyiLoraClipEncode:
     CATEGORY = "懒人/LoRA"
     FUNCTION = "encode"
-    RETURN_TYPES = ("CONDITIONING",)
-    DESCRIPTION = "CLIP 文本编码，接上游编排器的 TRIGGER_GROUPS 后可逐条勾选要并入的触发词。"
+    RETURN_TYPES = ("CONDITIONING", "STRING")
+    RETURN_NAMES = ("CONDITIONING", "PROMPT")
+    DESCRIPTION = "CLIP 文本编码，接上游编排器的 TRIGGER_GROUPS 后可逐条勾选要并入的触发词。第二个输出是合并后的最终文本，可接其它需要提示词字符串的节点。"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -165,16 +166,18 @@ class ShiyiLoraClipEncode:
                 # 旧工作流里存过空串，保留一个空选项让它能通过校验，执行时按 before 处理
                 "position": (["before", "after", ""], {"default": "before"}),
                 "dedupe": ("BOOLEAN", {"default": True}),
+                # 只给前端反推用：接 LoadImage 的 IMAGE，反推按钮就知道该读哪张图
+                "image": ("IMAGE",),
             },
         }
 
-    def encode(self, clip, text, triggers="", group_state="{}", position="before", dedupe=True):
+    def encode(self, clip, text, triggers="", group_state="{}", position="before", dedupe=True, image=None):
         words = collect_words(triggers, group_state)
         final = merge_words(text, words, position, dedupe)
         if clip is None:
             raise RuntimeError("clip 输入为空：请接 CLIP 或双 CLIP 加载器的输出")
         tokens = clip.tokenize(final)
-        return (clip.encode_from_tokens_scheduled(tokens),)
+        return (clip.encode_from_tokens_scheduled(tokens), final)
 
 
 class ShiyiLoraPrompt:

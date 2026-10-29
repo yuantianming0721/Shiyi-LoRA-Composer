@@ -6,10 +6,12 @@ const TABS = [
   { id: "lora", label: "LoRA" },
   { id: "tags", label: "常用 tag" },
   { id: "fav", label: "收藏" },
+  { id: "fibo", label: "Fibo 编辑" },
 ];
 
 const PANEL_H_OPEN = 260;
 const PANEL_H_TAGS = 380;
+const PANEL_H_FIBO = 420;
 const PANEL_H_CLOSED = 46;
 
 const INFO_CACHE = new Map();
@@ -299,6 +301,20 @@ function ensureStyle() {
   .shiyi-lp-warn{display:flex;align-items:center;gap:8px;flex:0 0 auto;padding:3px 7px;border-radius:5px;
     background:#2f2a1c;border:1px solid #5a4a24;color:#e2c47a;font-size:11px}
   .shiyi-lp-warn .shiyi-lp-btn{background:#3a3220;border-color:#6a5626;color:#f0d79a}
+  .shiyi-lp-confirm{display:flex;align-items:center;gap:6px;flex:0 0 auto;padding:3px 7px;border-radius:5px;
+    background:#2f2a1c;border:1px solid #5a4a24;color:#e2c47a;font-size:11px}
+  .shiyi-lp-confirm span{flex:1;min-width:0}
+  .shiyi-lp-confirm .shiyi-lp-btn{background:#3a3220;border-color:#6a5626;color:#f0d79a}
+  .shiyi-lp-fibo-help{display:flex;flex-direction:column;gap:3px;padding:2px 0}
+  .shiyi-lp-fibo-helpwrap{flex:0 0 auto;max-height:150px;overflow-y:auto;border-top:1px solid #2b2b35;padding-top:2px}
+  .shiyi-lp-fibo-helpwrap::-webkit-scrollbar{width:9px}
+  .shiyi-lp-fibo-helpwrap::-webkit-scrollbar-thumb{background:#3b3b48;border-radius:5px}
+  .shiyi-lp-fibo-row{border-left:2px solid #2f4a66;background:#20222b;border-radius:4px;padding:3px 6px}
+  .shiyi-lp-fibo-k{font-size:11px;color:#cfe6ff;margin-bottom:1px}
+  .shiyi-lp-fibo-v{font-size:10.5px;color:#8a8a99;line-height:1.45}
+  .shiyi-lp-select{background:#14141a;border:1px solid #33333d;border-radius:5px;color:#c7c7d4;
+    font-size:10.5px;padding:1px 4px;max-width:170px;outline:none}
+  .shiyi-lp-select:focus{border-color:#6fb3ff}
   `;
   document.head.appendChild(style);
 }
@@ -595,6 +611,7 @@ function apply(node) {
   if (tab === "lora") renderWords(node, rows);
   else if (tab === "tags") renderTags(node);
   else if (tab === "fav") renderFav(node);
+  else if (tab === "fibo") renderFibo(node);
   else renderPlaceholder(node, tab);
 }
 
@@ -1087,6 +1104,447 @@ async function renderFav(node) {
   }
 }
 
+/* Fibo 编辑页 ---------------------------------------------------------- */
+
+const FIBO_FIELDS = [
+  ["short_description", "摘要"],
+  ["objects", "对象"],
+  ["background_setting", "背景"],
+  ["lighting", "光照"],
+  ["aesthetics", "美学"],
+  ["photographic_characteristics", "摄影"],
+  ["style_medium", "媒介"],
+  ["text_render", "画面文字"],
+  ["context", "用途"],
+  ["artistic_style", "艺术风格"],
+  ["edit_instruction", "编辑指令"],
+];
+
+const FIBO_REQUIRED = ["short_description", "background_setting", "lighting", "aesthetics", "context"];
+
+const FIBO_VLM_MODELS = [
+  ["qwen3-vl:8b", "qwen3-vl:8b（快）"],
+  ["qwen3-vl:30b-a3b", "qwen3-vl:30b-a3b（准）"],
+  ["huihui_ai/qwen3-vl-abliterated:8b", "qwen3-vl-abliterated 8b"],
+];
+
+const FIBO_HELP = [
+  ["short_description", "摘要", "整图摘要，≤200 词。写最终画面：主体 + 动作 + 环境 + 光线 + 氛围。描述结果，不写“去掉了什么”。"],
+  ["objects", "对象", "主体/物体，≤5 个。每项必填 description（≤100 词）、location（center / top-left / bottom-right foreground）、relationship；可选 relative_size、shape_and_color、texture、appearance_details、orientation。人物可加 pose / expression / clothing / action / gender / skin_tone_and_texture。"],
+  ["background_setting", "背景", "环境、地点、背景里的所有元素。没写进 objects 的东西都放这里，不要重复。"],
+  ["lighting", "光照", "conditions（bright daylight / golden hour / studio lighting）+ direction（front-lit / backlit / side-lit from left）+ shadows（long soft shadows / sharp shadows / minimal shadows）。"],
+  ["aesthetics", "美学", "composition（rule of thirds / centered / close-up / medium shot）+ color_scheme（warm complementary / monochromatic blue）+ mood_atmosphere（serene / energetic / mysterious）。"],
+  ["photographic_characteristics", "摄影", "depth_of_field（shallow / deep / bokeh）+ focus（sharp focus on subject / soft focus / motion blur）+ camera_angle（eye-level / low angle / high angle）+ lens_focal_length（35mm / 85mm portrait / macro）。"],
+  ["style_medium", "媒介", "photograph / oil painting / digital illustration / anime / 3D render / watercolor / pencil sketch / pixel art / vector art。不写默认按照片处理。"],
+  ["text_render", "画面文字", "每段文字一项：text（精确内容，不要占位符）+ location + size（small / medium / large）+ color + font（bold sans-serif / serif / handwritten）；可选 appearance_details。没有文字就别写。"],
+  ["context", "用途", "这张图是什么用途：e-commerce product shot / magazine editorial / concept art for a game / social media post。"],
+  ["artistic_style", "艺术风格", "最多 3 个词：realistic / impressionistic, vibrant, textured / minimalist, flat。照片默认 realistic。"],
+  ["edit_instruction", "编辑指令", "一句祈使句，动词开头：Add / Change / Make / Move / Remove / Render / Turn / Zoom。不要提“原图/参考图”；多图用 <image_1>、<image_2> 指代。"],
+];
+
+function fiboSkeleton(key) {
+  const skeletons = {
+    short_description: "",
+    objects: [{ description: "", location: "", relationship: "" }],
+    background_setting: "",
+    lighting: { conditions: "", direction: "", shadows: "" },
+    aesthetics: { composition: "", color_scheme: "", mood_atmosphere: "" },
+    photographic_characteristics: { depth_of_field: "", focus: "", camera_angle: "", lens_focal_length: "" },
+    style_medium: "photograph",
+    text_render: [{ text: "", location: "", size: "medium", color: "white", font: "sans-serif" }],
+    context: "",
+    artistic_style: "realistic",
+    edit_instruction: "",
+  };
+  return JSON.parse(JSON.stringify(skeletons[key] ?? ""));
+}
+
+function fiboTextWidget(node) {
+  return node.widgets?.find((item) => item.name === "text") || null;
+}
+
+function readFiboText(node) {
+  const widget = fiboTextWidget(node);
+  return String(widget?.element ? widget.element.value : widget?.value || "");
+}
+
+function writeFiboText(node, text, focusEnd = true) {
+  const widget = fiboTextWidget(node);
+  if (!widget) {
+    toast("这个节点没有 text 输入");
+    return false;
+  }
+  const area = widget.element;
+  if (area) {
+    area.value = text;
+    if (focusEnd) {
+      area.selectionStart = area.selectionEnd = text.length;
+    } else {
+      area.selectionStart = area.selectionEnd = 0;
+      area.scrollTop = 0;
+    }
+    area.dispatchEvent(new Event("input", { bubbles: true }));
+    area.focus();
+  }
+  widget.value = text;
+  return true;
+}
+
+function parseFiboJson(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return {};
+  try {
+    const value = JSON.parse(raw);
+    if (value && typeof value === "object" && !Array.isArray(value)) return value;
+  } catch (_) {}
+  return null;
+}
+
+function fiboBlank(value) {
+  if (value === undefined || value === null) return true;
+  if (typeof value === "string") return !value.trim();
+  if (Array.isArray(value)) return value.length === 0 || value.every(fiboBlank);
+  if (typeof value === "object") return Object.keys(value).length === 0 || Object.values(value).every(fiboBlank);
+  return false;
+}
+
+function fiboStatus(node) {
+  const text = readFiboText(node).trim();
+  if (!text) return "空文本框：点下面「最小编辑」开始";
+  const caption = parseFiboJson(text);
+  if (caption === null) return "当前文本不是合法 JSON；模板会覆盖，字段按钮不会动它";
+  const missing = FIBO_REQUIRED.filter((key) => fiboBlank(caption[key]));
+  if (fiboBlank(caption.edit_instruction)) missing.push("edit_instruction");
+  const total = Object.keys(caption).length;
+  return missing.length ? `${total} 个字段；缺：${missing.join("、")}` : `${total} 个字段；必填齐全`;
+}
+
+function fiboTemplate(kind) {
+  if (kind === "min") return { short_description: "", edit_instruction: "" };
+  if (kind === "remove") {
+    return {
+      short_description: "A ... scene with ..., the scene is empty and no people are present.",
+      background_setting: "",
+      lighting: { conditions: "", direction: "", shadows: "" },
+      aesthetics: { composition: "", color_scheme: "", mood_atmosphere: "" },
+      style_medium: "photograph",
+      edit_instruction: "Remove the ... from the scene, leaving the empty background.",
+    };
+  }
+  if (kind === "background") {
+    return {
+      short_description: "The same subject in a new setting: ...",
+      objects: [{ description: "the main subject", location: "center", relationship: "in the foreground" }],
+      background_setting: "",
+      lighting: { conditions: "", direction: "", shadows: "" },
+      aesthetics: { composition: "", color_scheme: "", mood_atmosphere: "" },
+      style_medium: "photograph",
+      edit_instruction: "Change the background to ...",
+    };
+  }
+  if (kind === "style") {
+    return {
+      short_description: "The same scene rendered as ...",
+      background_setting: "",
+      lighting: { conditions: "", direction: "", shadows: "" },
+      aesthetics: { composition: "", color_scheme: "", mood_atmosphere: "" },
+      style_medium: "oil painting",
+      artistic_style: "impressionistic, vibrant, textured",
+      edit_instruction: "Turn the image into the oil painting style.",
+    };
+  }
+  return {
+    short_description: "",
+    objects: [{ description: "", location: "", relationship: "" }],
+    background_setting: "",
+    lighting: { conditions: "", direction: "", shadows: "" },
+    aesthetics: { composition: "", color_scheme: "", mood_atmosphere: "" },
+    photographic_characteristics: { depth_of_field: "", focus: "", camera_angle: "", lens_focal_length: "" },
+    style_medium: "photograph",
+    context: "",
+    artistic_style: "realistic",
+    edit_instruction: "",
+  };
+}
+
+function fiboLocate(node, key) {
+  const current = readFiboText(node);
+  const idx = current.indexOf(`"${key}"`);
+  const area = fiboTextWidget(node)?.element;
+  if (idx < 0 || !area) return false;
+  area.focus();
+  area.selectionStart = idx;
+  area.selectionEnd = idx + key.length + 2;
+  const line = current.slice(0, idx).split("\n").length - 1;
+  const lh = parseFloat(getComputedStyle(area).lineHeight) || 16;
+  area.scrollTop = Math.max(0, line * lh - area.clientHeight / 3);
+  return true;
+}
+
+function applyFiboTemplate(node, kind) {
+  const write = () => {
+    writeFiboText(node, JSON.stringify(fiboTemplate(kind), null, 2), false);
+    node.__fiboConfirm = null;
+    node.__fiboNotice = "已写入模板";
+    renderFibo(node);
+  };
+  if (!readFiboText(node).trim()) return write();
+  node.__fiboNotice = "";
+  node.__fiboConfirm = { message: "覆盖当前文本？", run: write, where: "template" };
+  renderFibo(node);
+}
+
+function addFiboField(node, key) {
+  const current = readFiboText(node);
+  const caption = parseFiboJson(current);
+  if (caption === null) {
+    node.__fiboNotice = "当前不是 JSON：先点模板或清空，避免误删";
+    renderFibo(node);
+    return;
+  }
+  if (Object.prototype.hasOwnProperty.call(caption, key)) {
+    fiboLocate(node, key);
+    node.__fiboNotice = `已定位：${key}`;
+    renderFibo(node);
+    return;
+  }
+  caption[key] = fiboSkeleton(key);
+  writeFiboText(node, JSON.stringify(caption, null, 2));
+  node.__fiboNotice = `已添加：${key}`;
+  renderFibo(node);
+}
+
+function fiboConfirmBar(node) {
+  const bar = el("div", "shiyi-lp-confirm");
+  bar.appendChild(el("span", "", node.__fiboConfirm.message));
+  const ok = el("button", "shiyi-lp-btn danger", "确认");
+  ok.onclick = () => {
+    const run = node.__fiboConfirm.run;
+    node.__fiboConfirm = null;
+    run();
+  };
+  const cancel = el("button", "shiyi-lp-btn", "取消");
+  cancel.onclick = () => {
+    node.__fiboConfirm = null;
+    renderFibo(node);
+  };
+  bar.append(ok, cancel);
+  return bar;
+}
+
+function graphLinkList(graph) {
+  const links = graph?.links;
+  if (!links) return [];
+  if (Array.isArray(links)) return links.filter(Boolean);
+  if (typeof links.values === "function") return [...links.values()];
+  return Object.values(links);
+}
+
+function linkField(link, index, name) {
+  return Array.isArray(link) ? link[index] : link[name];
+}
+
+function findGraphLink(graph, id) {
+  const links = graph?.links;
+  if (!links) return null;
+  if (Array.isArray(links)) return links.find((link) => link && link[0] === id) || null;
+  if (links[id]) return links[id];
+  return graphLinkList(graph).find((link) => linkField(link, 0, "id") === id) || null;
+}
+
+function findReferenceImage(node) {
+  const graph = node.graph || app.graph;
+  const originOf = (link) => {
+    let origin = graph?.getNodeById?.(linkField(link, 1, "origin_id"));
+    for (let guard = 0; origin?.type === "Reroute" && guard < 8; guard++) {
+      const input = (origin.inputs || [])[0];
+      const inner = input?.link != null ? findGraphLink(graph, input.link) : null;
+      origin = inner ? graph?.getNodeById?.(linkField(inner, 1, "origin_id")) : null;
+    }
+    return origin;
+  };
+  const imageOf = (origin) => (origin?.widgets || []).find((widget) => widget.name === "image")?.value || "";
+  const resolve = (target, names) => {
+    const input = (target?.inputs || []).find((item) => names.includes(item.name));
+    if (!input || input.link == null) return "";
+    return imageOf(originOf(findGraphLink(graph, input.link)));
+  };
+  const direct = (node.inputs || []).find((item) => item.name === "image" && item.link != null);
+  if (direct) {
+    const image = imageOf(originOf(findGraphLink(graph, direct.link)));
+    if (image) return image;
+  }
+  const downstream = graphLinkList(graph).find(
+    (link) => linkField(link, 1, "origin_id") === node.id && linkField(link, 2, "origin_slot") === 1
+  );
+  if (downstream) {
+    const image = resolve(graph?.getNodeById?.(linkField(downstream, 3, "target_id")), ["images.image_1", "image_1"]);
+    if (image) return image;
+  }
+  for (const other of graph?._nodes || []) {
+    if (other?.type !== "TextEncodeFibo2") continue;
+    const image = resolve(other, ["images.image_1", "image_1"]);
+    if (image) return image;
+  }
+  return "";
+}
+
+async function fiboCaption(node) {
+  if (node.__fiboBusy) return;
+  const image = findReferenceImage(node);
+  if (!image) {
+    node.__fiboNotice = "没找到参考图：把 PROMPT 接到 TextEncodeFibo2，并给 images.image_1 接 LoadImage";
+    renderFibo(node);
+    return;
+  }
+  const model = node.properties?.vlmModel || FIBO_VLM_MODELS[0][0];
+  node.__fiboBusy = true;
+  const slow = String(model).includes("30b") ? "，30B 约 30–60 秒" : "";
+  node.__fiboNotice = `反推中：${image}（${model}${slow}）…`;
+  renderFibo(node);
+  try {
+    const res = await api.fetchApi("/shiyi_lora/vgl_caption", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image, model }),
+      timeoutMs: 600000,
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "反推失败");
+    const caption = { ...data.caption };
+    if (!Object.prototype.hasOwnProperty.call(caption, "edit_instruction")) caption.edit_instruction = "";
+    writeFiboText(node, JSON.stringify(caption, null, 2), false);
+    node.__fiboNotice = `已反推 ${Object.keys(caption).length} 个字段；把描述改成“改完后的画面”，再填 edit_instruction`;
+  } catch (error) {
+    node.__fiboNotice = `反推失败：${error.message}`;
+  } finally {
+    node.__fiboBusy = false;
+    renderFibo(node);
+  }
+}
+
+function renderFibo(node) {
+  const lp = node.__lp;
+  lp.pageWords.replaceChildren();
+
+  const status = el("div", "shiyi-lp-hint", `${fiboStatus(node)}${node.__fiboNotice ? `　·　${node.__fiboNotice}` : ""}`);
+  status.style.textAlign = "left";
+  status.style.padding = "2px 2px";
+  lp.pageWords.appendChild(status);
+
+  const tpl = el("div", "shiyi-lp-chips");
+  for (const [kind, label] of [["min", "最小编辑"], ["full", "完整编辑"], ["remove", "去物"], ["background", "改背景"], ["style", "换风格"]]) {
+    const chip = el("div", "shiyi-lp-chip", label);
+    chip.onclick = () => applyFiboTemplate(node, kind);
+    tpl.appendChild(chip);
+  }
+  lp.pageWords.appendChild(tpl);
+
+  if (node.__fiboConfirm && node.__fiboConfirm.where !== "actions") {
+    lp.pageWords.appendChild(fiboConfirmBar(node));
+  }
+
+  const list = el("div", "shiyi-lp-list");
+  const caption = parseFiboJson(readFiboText(node)) || {};
+
+  const fields = el("div", "shiyi-lp-chips");
+  for (const [key, label] of FIBO_FIELDS) {
+    const has = Object.prototype.hasOwnProperty.call(caption, key);
+    const chip = el("div", "shiyi-lp-chip notranslate" + (has ? " on" : ""), label);
+    chip.dataset.field = key;
+    chip.setAttribute("translate", "no");
+    chip.onclick = () => addFiboField(node, key);
+    fields.appendChild(chip);
+  }
+  list.appendChild(fields);
+
+  const reverse = el("div", "shiyi-lp-tools");
+  reverse.style.display = "flex";
+  reverse.style.gap = "6px";
+  reverse.style.flexWrap = "wrap";
+  reverse.style.padding = "2px 0";
+  const captionBtn = el("button", "shiyi-lp-btn", node.__fiboBusy ? "反推中…" : "反推参考图");
+  captionBtn.disabled = !!node.__fiboBusy;
+  captionBtn.onclick = () => fiboCaption(node);
+  const modelSel = document.createElement("select");
+  modelSel.className = "shiyi-lp-select notranslate";
+  modelSel.setAttribute("translate", "no");
+  for (const [value, label] of FIBO_VLM_MODELS) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    if (value === (node.properties?.vlmModel || FIBO_VLM_MODELS[0][0])) option.selected = true;
+    modelSel.appendChild(option);
+  }
+  modelSel.onchange = () => {
+    node.properties.vlmModel = modelSel.value;
+  };
+  modelSel.onkeydown = (event) => event.stopPropagation();
+  reverse.append(captionBtn, modelSel);
+  list.appendChild(reverse);
+
+  const actions = el("div", "shiyi-lp-tools");
+  actions.style.display = "flex";
+  actions.style.gap = "6px";
+  actions.style.padding = "2px 0";
+  const check = el("button", "shiyi-lp-btn", "检查必填");
+  check.onclick = () => {
+    const current = parseFiboJson(readFiboText(node));
+    if (current === null) {
+      node.__fiboNotice = "当前文本不是合法 JSON";
+      renderFibo(node);
+      return;
+    }
+    const missing = FIBO_REQUIRED.filter((key) => fiboBlank(current[key]));
+    if (fiboBlank(current.edit_instruction)) missing.push("edit_instruction");
+    node.__fiboNotice = missing.length ? `缺：${missing.join("、")}` : "必填字段齐全";
+    renderFibo(node);
+  };
+  const clear = el("button", "shiyi-lp-btn danger", "清空");
+  clear.onclick = () => {
+    if (!readFiboText(node).trim()) return;
+    node.__fiboConfirm = {
+      message: "清空文本框？",
+      where: "actions",
+      run: () => {
+        writeFiboText(node, "");
+        node.__fiboNotice = "已清空";
+        renderFibo(node);
+      },
+    };
+    renderFibo(node);
+  };
+  if (node.__fiboConfirm?.where === "actions") {
+    list.appendChild(fiboConfirmBar(node));
+  } else {
+    actions.append(check, clear);
+    list.appendChild(actions);
+  }
+
+  const tip = el("div", "shiyi-lp-hint",
+    "编辑最小集：short_description + edit_instruction。字段值写“最终画面”，edit_instruction 用祈使句；官方 5 个必填：short_description / background_setting / lighting / aesthetics / context。反推得到的是参考图描述，编辑前要先把去掉/换掉的部分从 objects、short_description 里改掉。");
+  tip.style.textAlign = "left";
+  tip.style.padding = "4px 2px";
+  list.appendChild(tip);
+
+  const helpTitle = el("div", "shiyi-lp-hint", "每个字段填什么");
+  helpTitle.style.textAlign = "left";
+  helpTitle.style.padding = "4px 2px 2px";
+
+  const help = el("div", "shiyi-lp-fibo-help");
+  for (const [key, label, text] of FIBO_HELP) {
+    const row = el("div", "shiyi-lp-fibo-row");
+    row.appendChild(el("div", "shiyi-lp-fibo-k", `${label} · ${key}`));
+    row.appendChild(el("div", "shiyi-lp-fibo-v", text));
+    help.appendChild(row);
+  }
+
+  const helpWrap = el("div", "shiyi-lp-fibo-helpwrap");
+  helpWrap.append(helpTitle, help);
+  lp.pageWords.appendChild(list);
+  lp.pageWords.appendChild(helpWrap);
+}
+
 function renderPlaceholder(node, tab) {
   const lp = node.__lp;
   lp.pageWords.replaceChildren();
@@ -1358,6 +1816,7 @@ function signature(node) {
 function panelHeight(node) {
   if (node.properties?.panelOpen === false) return PANEL_H_CLOSED;
   if (node.properties?.tab === "tags" || node.properties?.tab === "fav") return PANEL_H_TAGS;
+  if (node.properties?.tab === "fibo") return PANEL_H_FIBO;
   return PANEL_H_OPEN;
 }
 

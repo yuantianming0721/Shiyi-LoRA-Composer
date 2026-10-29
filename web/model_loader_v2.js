@@ -57,7 +57,11 @@ function ensureStyle() {
   .shiyi-ml-list::-webkit-scrollbar{width:9px}
   .shiyi-ml-list::-webkit-scrollbar-thumb{background:#3b3b48;border-radius:5px}
   .shiyi-ml-list::-webkit-scrollbar-track{background:transparent}
-  .shiyi-ml-group{flex:0 0 auto;font-size:10.5px;color:#6d6d7a;padding:2px 4px 1px;border-bottom:1px solid #23232d}
+  .shiyi-ml-group{flex:0 0 auto;font-size:10.5px;color:#8a8a99;padding:2px 4px 1px;border-bottom:1px solid #23232d;
+    cursor:pointer;user-select:none;display:flex;gap:4px;align-items:center}
+  .shiyi-ml-group:hover{color:#cfe6ff;background:#1e1e27}
+  .shiyi-ml-group .caret{color:#6d6d7a;font-size:9px;width:9px}
+  .shiyi-ml-group.closed{color:#6d6d7a;background:#16161d}
   .shiyi-ml-row{flex:0 0 auto;display:flex;align-items:center;gap:6px;padding:2px 6px;border-radius:4px;
     cursor:pointer;font-size:11px;background:#1d1d24}
   .shiyi-ml-row:hover{background:#262a35}
@@ -367,8 +371,25 @@ function render(node) {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(item);
   }
+  if (!ui.closed || ui.closedSignature !== [...groups.keys()].join("\u0000")) {
+    ui.closed = new Set(groups.keys());
+    ui.closedSignature = [...groups.keys()].join("\u0000");
+  }
+  if (keyword) ui.closed = new Set();
+
   for (const [folder, entries] of groups) {
-    if (folder !== "(根目录)") ui.list.appendChild(el("div", "shiyi-ml-group", folder));
+    const collapsed = ui.closed.has(folder);
+    const head = el("div", "shiyi-ml-group" + (collapsed ? " closed" : ""));
+    head.append(el("span", "caret", collapsed ? "\u25b8" : "\u25be"));
+    head.appendChild(el("span", "gname", `${folder}（${entries.length}）`));
+    head.title = collapsed ? "点一下展开这组" : "点一下收起这组";
+    head.onclick = () => {
+      if (ui.closed.has(folder)) ui.closed.delete(folder);
+      else ui.closed.add(folder);
+      render(node);
+    };
+    ui.list.appendChild(head);
+    if (collapsed) continue;
     for (const item of entries) {
       const row = el("div", "shiyi-ml-row");
       const on = selected && selected.kind === item.kind && selected.name === item.name;

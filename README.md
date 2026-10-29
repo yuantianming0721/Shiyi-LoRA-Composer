@@ -4,7 +4,7 @@
 
 - **模型加载器** — Checkpoint / UNet / GGUF 一个下拉搞定；自动认出模型自带的 CLIP / VAE，缺哪个才让你补；面板直接给架构、精度或量化、体积、缩略图
 - **LoRA 编排器** — 一个节点套 N 个 LoRA，每个 LoRA 的说明段落和触发词就在面板里，点一下插进提示词
-- **CLIP 文本编码** — 原生 textarea 不动，下方挂「便携提示词添加」：LoRA 说明 / 常用 tag / 收藏 三个标签页
+- **CLIP 文本编码** — 原生 textarea 不动，下方挂「便携提示词添加」：LoRA 说明 / 常用 tag / 收藏 / Fibo 编辑 四个标签页
 - **触发词并入提示词** — 纯字符串版，去重后塞进正文前或后
 
 中文界面、深色紧凑、不弹窗挡视野；删除带撤销，条目操作走右键菜单。
@@ -53,7 +53,7 @@ git clone https://github.com/yuantianming0721/Shiyi-LoRA-Composer
 |---|---|
 | **模型加载器（Checkpoint / UNet / GGUF）** | 一个入口选三种分发方式；面板显示架构、精度/量化、大小、张量数、缩略图，输出 MODEL / CLIP / VAE |
 | **LoRA 编排器（多 LoRA · 说明 · 触发词）** | MODEL / CLIP → 依次套 N 个 LoRA，输出 MODEL、CLIP、TRIGGERS、TRIGGER_GROUPS |
-| **CLIP 文本编码（LoRA 触发词）** | clip + 提示词 → CONDITIONING；原生 text 框 + 「便携提示词添加」列表，点 LoRA 行打开说明段落页 |
+| **CLIP 文本编码（LoRA 触发词）** | clip + 提示词 → CONDITIONING + PROMPT；原生 text 框 + 「便携提示词添加」列表（LoRA / 常用 tag / 收藏 / Fibo 编辑 四页） |
 | **LoRA 触发词并入提示词** | 纯字符串版：把触发词去重后塞进正文前或后 |
 
 ## 模型加载器
@@ -67,6 +67,8 @@ git clone https://github.com/yuantianming0721/Shiyi-LoRA-Composer
 | GGUF | 同上目录里的 `.gguf` | 走 ComfyUI-GGUF 的 `UnetLoaderGGUF`，需要装该插件（CPU 模式跑不动，要 GPU） |
 
 面板每行显示 **名称 + 精度徽标 + 文件大小**，点一行就写进「当前模型」；下方详情给 **缩略图（同目录 `<名字>.preview.png` 或 `<名字>.png`）、架构判断、格式·精度·张量数·体积、来源仓库（`.assets/manifest.json`）**。
+
+模型列表默认按系列折叠成一行行组头（`▸ anima（10）`），点组头展开/收起，搜索时自动全部展开，面板不会被几十个模型占满。
 
 面板高度跟着节点走：拖动节点右下角拉高，列表和说明区一起变高；拉矮到下限会被挡住，列表保留最小 130px。折叠只缩成标题栏，再展开恢复原来的高度。
 
@@ -120,7 +122,7 @@ CLIP 加载器 ──clip──┬──► LoRA 编排器 ──MODEL──► 
 
 ```
 ▾ 便携提示词添加
-  [LoRA] [常用 tag] [收藏]
+  [LoRA] [常用 tag] [收藏] [Fibo 编辑]
   ▼ anima/原神
       冰之女皇                          移除
 ```
@@ -134,6 +136,9 @@ CLIP 加载器 ──clip──┬──► LoRA 编排器 ──MODEL──► 
   - **右键条目** → 插入到提示词 / 从提示词移除 / 编辑 / 删除（移除是按项删，不碰同行其它词）
   - 删除后浮层带 **「撤销」**，6 秒内可恢复
   - **搜索**：按名称或内容过滤，跨分类显示并标注所属分类
+- **Fibo 编辑**：给 Fibo 2.0 的 VGL 结构化提示词用。5 个一键模板（最小编辑 / 完整编辑 / 去物 / 改背景 / 换风格）+ 11 个字段芯片；点字段把对应骨架**合并**进当前 JSON，已有字段不覆盖。底部「检查必填」按官方 5 项（`short_description` / `background_setting` / `lighting` / `aesthetics` / `context`）检查，编辑另看 `edit_instruction`。当前文本不是 JSON 时字段芯片拒绝写入，避免误删手写提示词。
+- **反推参考图**：点按钮用本地 Ollama 的 `qwen3-vl:8b`（快）、`qwen3-vl:30b-a3b`（准，MoE）或 `huihui_ai/qwen3-vl-abliterated:8b` 读参考图，自动填 10 个 VGL 字段。**优先读节点自己的 `image` 输入**（把 LoadImage 的 IMAGE 直接接上来，不再靠下游连线猜），没接才回退到 `PROMPT → TextEncodeFibo2 → images.image_1`。后端 `/shiyi_lora/vgl_caption`，直连 `127.0.0.1:11434`（可用 `SHIYI_OLLAMA_URL` 覆盖）。反推得到的是参考图描述，编辑前要先把去掉/换掉的部分改掉，再填 `edit_instruction`。
+- **PROMPT 输出**：这个节点的第二个输出是合并后的最终文本，可直接接 `TextEncodeFibo2.prompt`。配套工作流 `Fibo2-懒人编辑.json` 已经接好：在 Fibo 编辑页写完，点运行即可。
 
 标签库接口：`GET /shiyi_lora/tags`（返回 `{total, categories:[{name,count,groups:[{name,color,tags:[{tag,zh}]}]}]}`）。
 
