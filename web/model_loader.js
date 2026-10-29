@@ -68,10 +68,13 @@ function ensureStyle() {
   .shiyi-ml-select{flex:1 1 0;min-width:0;background:#14141a;border:1px solid #33333d;border-radius:5px;color:#dcdce4;
     font-size:11px;padding:1px 4px;outline:none;font-family:inherit}
   .shiyi-ml-select:focus{border-color:#6fb3ff}
-  .shiyi-ml-notes{flex:1 1 100%;width:100%;max-height:46px;overflow:hidden;color:#9a9aa8;font-size:10.5px;line-height:1.45;
-    white-space:pre-wrap;word-break:break-word;cursor:pointer;padding-top:3px;border-top:1px dashed #2b2b35}
-  .shiyi-ml-notes.open{max-height:150px;overflow:auto;color:#c2c2cf}
-  .shiyi-ml-notes .more{color:#6fb3ff}
+  .shiyi-ml-notes{position:relative;flex:1 1 100%;width:100%;max-height:96px;overflow:hidden;color:#a8a8b6;
+    font-size:10.5px;line-height:1.45;white-space:pre-wrap;word-break:break-word;cursor:pointer;
+    padding:4px 34px 2px 4px;border-top:1px dashed #2b2b35;background:#16161d;border-radius:0 0 4px 4px}
+  .shiyi-ml-notes.open{max-height:260px;overflow:auto;color:#c8c8d4}
+  .shiyi-ml-notes::after{content:"展开";position:absolute;right:3px;bottom:2px;font-size:9px;color:#6fb3ff;
+    background:#16161d;padding:0 3px;border-radius:3px;pointer-events:none}
+  .shiyi-ml-notes.open::after{content:"收起"}
   .shiyi-ml-detail{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:8px;padding:5px 6px;background:#1a1a22;border:1px solid #2b2b35;
     border-radius:5px;min-height:64px}
   .shiyi-ml-detail .thumb{width:54px;height:54px;object-fit:cover;border-radius:4px;background:#14141a;flex:0 0 auto}
