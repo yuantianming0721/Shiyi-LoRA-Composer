@@ -62,7 +62,15 @@ function ensureStyle() {
   .shiyi-ml-row .badge{flex:0 0 auto;font-size:10px;color:#8fc4ff;border:1px solid #2f4a66;border-radius:3px;
     padding:0 3px;line-height:13px}
   .shiyi-ml-row .size{flex:0 0 auto;font-size:10px;color:#6d6d7a}
-  .shiyi-ml-detail{flex:0 0 auto;display:flex;gap:8px;padding:5px 6px;background:#1a1a22;border:1px solid #2b2b35;
+  .shiyi-ml-filters{flex:0 0 auto;display:flex;gap:5px;padding:0 2px}
+  .shiyi-ml-select{flex:1 1 0;min-width:0;background:#14141a;border:1px solid #33333d;border-radius:5px;color:#dcdce4;
+    font-size:11px;padding:1px 4px;outline:none;font-family:inherit}
+  .shiyi-ml-select:focus{border-color:#6fb3ff}
+  .shiyi-ml-notes{flex:1 1 100%;width:100%;max-height:46px;overflow:hidden;color:#9a9aa8;font-size:10.5px;line-height:1.45;
+    white-space:pre-wrap;word-break:break-word;cursor:pointer;padding-top:3px;border-top:1px dashed #2b2b35}
+  .shiyi-ml-notes.open{max-height:150px;overflow:auto;color:#c2c2cf}
+  .shiyi-ml-notes .more{color:#6fb3ff}
+  .shiyi-ml-detail{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:8px;padding:5px 6px;background:#1a1a22;border:1px solid #2b2b35;
     border-radius:5px;min-height:64px}
   .shiyi-ml-detail .thumb{width:54px;height:54px;object-fit:cover;border-radius:4px;background:#14141a;flex:0 0 auto}
   .shiyi-ml-detail .thumb.empty{display:flex;align-items:center;justify-content:center;color:#4a4a56;font-size:9px}
@@ -96,9 +104,23 @@ function buildPanel(node) {
   const search = document.createElement("input");
   search.className = "shiyi-ml-search";
   search.placeholder = "搜索模型";
+  const filters = el("div", "shiyi-ml-filters");
+  const seriesSel = document.createElement("select");
+  seriesSel.className = "shiyi-ml-select";
+  seriesSel.title = "按系列筛选";
+  const sortSel = document.createElement("select");
+  sortSel.className = "shiyi-ml-select";
+  sortSel.title = "排序方式";
+  for (const [value, label] of [["name", "名称 A→Z"], ["size", "大小 大到小"], ["mtime", "最近修改"], ["arch", "架构分组"]]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    sortSel.appendChild(option);
+  }
+  filters.append(seriesSel, sortSel);
   const list = el("div", "shiyi-ml-list");
   const detail = el("div", "shiyi-ml-detail");
-  body.append(tabs, search, list, detail);
+  body.append(tabs, filters, search, list, detail);
   root.append(bar, body);
 
   const widget = node.addDOMWidget("model_panel", "shiyi_panel", root, {
@@ -109,7 +131,7 @@ function buildPanel(node) {
   });
   widget.computeSize = (width) => [width, root.classList.contains("collapsed") ? 34 : PANEL_H];
 
-  node.__ml = { root, bar, arrow, current, tabs, search, list, detail, collapsed: false, kind: "checkpoint", keyword: "" };
+  node.__ml = { root, bar, arrow, current, tabs, search, list, detail, seriesSel, sortSel, collapsed: false, kind: "checkpoint", keyword: "", series: "", sort: "name" };
 
   bar.onclick = () => {
     node.__ml.collapsed = !node.__ml.collapsed;
@@ -123,7 +145,7 @@ function buildPanel(node) {
 
 function resize(node) {
   const panel = node.__ml?.collapsed ? 34 : PANEL_H;
-  node.setSize([Math.max(460, node.size?.[0] || 460), panel + 170]);
+  node.setSize([Math.max(460, node.size?.[0] || 460), panel + 216]);
 }
 
 function modelWidget(node) {
@@ -178,6 +200,47 @@ function renderDetail(node, item) {
   }
   if (item.clip_type) line("CLIP 类型", `auto → ${item.clip_type}`);
   box.appendChild(meta);
+
+  if (item.notes) {
+    const notes = el("div", "shiyi-ml-notes", item.notes);
+    notes.title = "点一下展开 / 收起";
+    notes.onclick = () => notes.classList.toggle("open");
+    box.appendChild(notes);
+  }
+}
+
+function refreshSeries(node, pool) {
+  const ui = node.__ml;
+  const folders = new Set();
+  for (const item of pool) folders.add(item.folder || "");
+  if (ui.series && !folders.has(ui.series)) ui.series = "";
+
+  const signature = [...folders].sort().join("\u0000");
+  if (ui.seriesSignature === signature) return;
+  ui.seriesSignature = signature;
+
+  const options = [["", `全部系列（${pool.length}）`]];
+  for (const folder of [...folders].sort((a, b) => a.localeCompare(b, "zh"))) {
+    const count = pool.filter((item) => (item.folder || "") === folder).length;
+    options.push([folder, `${folder || "(根目录)"}（${count}）`]);
+  }
+  ui.seriesSel.replaceChildren();
+  for (const [value, label] of options) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    ui.seriesSel.appendChild(option);
+  }
+  ui.seriesSel.value = ui.series;
+  ui.seriesSel.onchange = () => {
+    ui.series = ui.seriesSel.value;
+    render(node);
+  };
+  ui.sortSel.value = ui.sort;
+  ui.sortSel.onchange = () => {
+    ui.sort = ui.sortSel.value;
+    render(node);
+  };
 }
 
 function render(node) {
@@ -197,13 +260,18 @@ function render(node) {
     const btn = el("div", "shiyi-ml-tab" + (ui.kind === tab.id ? " on" : ""), `${tab.label} ${counts[tab.id]}`);
     btn.onclick = () => {
       ui.kind = tab.id;
+      ui.seriesSignature = null;
       render(node);
     };
     ui.tabs.appendChild(btn);
   }
 
+  const pool = data[ui.kind] || [];
+  refreshSeries(node, pool);
+
   const keyword = ui.keyword.trim().toLowerCase();
-  const items = (data[ui.kind] || []).filter((item) => {
+  const items = pool.filter((item) => {
+    if (ui.series && (item.folder || "") !== ui.series) return false;
     if (!keyword) return true;
     return (
       String(item.name).toLowerCase().includes(keyword) ||
@@ -211,6 +279,12 @@ function render(node) {
       String(item.folder || "").toLowerCase().includes(keyword)
     );
   });
+
+  const byName = (a, b) => String(a.label || a.name).localeCompare(String(b.label || b.name), "zh");
+  if (ui.sort === "size") items.sort((a, b) => (b.size || 0) - (a.size || 0));
+  else if (ui.sort === "mtime") items.sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+  else if (ui.sort === "arch") items.sort((a, b) => String(a.arch).localeCompare(String(b.arch), "zh") || byName(a, b));
+  else items.sort(byName);
 
   ui.list.replaceChildren();
   if (!items.length) {
@@ -221,7 +295,7 @@ function render(node) {
   const selected = resolveSelection(modelWidget(node)?.value);
   const groups = new Map();
   for (const item of items) {
-    const key = item.folder || "(根目录)";
+    const key = ui.sort === "arch" ? item.arch : item.folder || "(根目录)";
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(item);
   }

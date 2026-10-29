@@ -35,6 +35,15 @@ _ARCH_BY_TEXT = [
     ("minimax", "MiniMax"),
     ("seedvr", "SeedVR"),
     ("moss", "MOSS"),
+    ("kroma", "Krea 2"),
+    ("z_image", "Z-Image"),
+    ("z-image", "Z-Image"),
+    ("zit", "Z-Image"),
+    ("acestep", "ACE-Step"),
+    ("ace-step", "ACE-Step"),
+    ("ming_image", "Ming"),
+    ("ming-image", "Ming"),
+    ("anima", "anima"),
 ]
 
 _PREVIEW_SUFFIXES = (".preview.png", ".preview.jpg", ".preview.jpeg", ".preview.webp")
@@ -153,6 +162,10 @@ def _arch_from_text(values):
 
 def _arch_from_tensors(names):
     joined = "\n".join(names)
+    if "cap_embedder." in joined:
+        return "Z-Image"
+    if "adaln_modulation_cross_attn." in joined or "adaln_modulation_mlp." in joined:
+        return "anima"
     if "double_blocks." in joined or "single_blocks." in joined:
         return "Flux 系"
     if "label_emb." in joined:
@@ -162,6 +175,22 @@ def _arch_from_tensors(names):
     if "transformer_blocks." in joined:
         return "SD3 / DiT 系"
     return None
+
+
+def _read_notes(path, limit=1600):
+    stem = os.path.splitext(path)[0]
+    for candidate in (path + ".txt", stem + ".txt"):
+        if not os.path.exists(candidate):
+            continue
+        try:
+            with open(candidate, "r", encoding="utf-8", errors="replace") as handle:
+                text = handle.read(limit)
+        except OSError:
+            continue
+        text = text.strip()
+        if text:
+            return text
+    return ""
 
 
 def _assets_meta(path):
@@ -230,7 +259,9 @@ def _entry(kind, name):
         if parsed:
             meta, counts, names = parsed
 
+    notes = _read_notes(path)
     text_values = [
+        notes[:200],
         meta.get("modelspec.architecture"),
         meta.get("modelspec.title"),
         meta.get("base_model"),
@@ -258,6 +289,8 @@ def _entry(kind, name):
         "format": "gguf" if path.lower().endswith(".gguf") else "safetensors",
         "size": stat.st_size,
         "size_text": _size_text(stat.st_size),
+        "mtime": stat.st_mtime,
+        "notes": notes,
         "precision": _pick_precision(meta, counts),
         "arch": arch,
         "arch_hint": arch_hint,

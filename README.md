@@ -68,6 +68,10 @@ git clone https://github.com/yuantianming0721/Shiyi-LoRA-Composer
 
 面板每行显示 **名称 + 精度徽标 + 文件大小**，点一行就写进「当前模型」；下方详情给 **缩略图（同目录 `<名字>.preview.png` 或 `<名字>.png`）、架构判断、格式·精度·张量数·体积、来源仓库（`.assets/manifest.json`）**。
 
+两个下拉：**系列筛选**（按子目录，带数量，切换 tab 自动换成该 tab 的目录）和 **排序**（名称 / 大小 / 最近修改 / 架构分组——选架构分组时列表按架构重新分组）。
+
+模型旁边放 `<名字>.txt`（或 `<名字>.safetensors.txt`）就会在详情下方显示说明，默认折叠 3 行，点一下展开。说明前 200 字也会参与架构识别——作者在说明里写「Krea 2 微调」这类字就能判对。
+
 - **自动检测内置组件**：checkpoint 里带 CLIP / VAE 就直接用内置的，缺哪个才去加载手选的 `clip_name` / `vae_name`。判定看张量前缀（CLIP：`cond_stage_model.` / `conditioner.` / `te.` / `clip_l.` / `text_encoders.`；VAE：`first_stage_model.` / `vae.`），面板详情写 `内置：CLIP ✓ / VAE ✓（都用内置）` 或 `CLIP ✗ / VAE ✗（缺的手选补）`
 - **`clip_type` 默认 `auto`**：按模型架构自动选（`krea2` / `qwen_image` / `flux` / `stable_diffusion` / `moss_image` …），详情里显示 `auto → xxx`；想手动指定就改下拉
 - 架构按优先级取：safetensors/gguf 元数据（`modelspec.architecture` / `base_model` / `key_layout`）→ 文件名 → 张量名特征，详情里会标出用的是哪一路（`元数据` / `按张量名推断`）
