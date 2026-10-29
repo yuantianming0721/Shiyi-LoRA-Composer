@@ -39,6 +39,8 @@ function ensureStyle() {
     font-size:11.5px;flex:0 0 auto;user-select:none}
   .shiyi-ml-bar .arrow{color:#8a8a99;font-size:10px}
   .shiyi-ml-bar .ttl{color:#cfe6ff}
+  .shiyi-ml-bar .ver{flex:0 0 auto;color:#5f7fa6;font-size:9px;line-height:1.5;padding:0 3px;
+    border:1px solid #33404f;border-radius:3px;background:#1a1f27}
   .shiyi-ml-bar .cur{margin-left:auto;color:#7d7d8c;font-size:10.5px;overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap;max-width:55%}
   .shiyi-ml-body{flex:1;min-height:0;display:flex;flex-direction:column;gap:4px;padding:6px}
@@ -108,7 +110,9 @@ function buildPanel(node) {
   const arrow = el("span", "arrow", "▾");
   const title = el("span", "ttl", "懒人的模型加载器");
   const current = el("span", "cur", "");
-  bar.append(arrow, title, current);
+  const version = el("span", "ver", "v2");
+  version.title = "脚本版本：看到 v2 说明加载的是带系列/类型下拉的新版";
+  bar.append(arrow, title, version, current);
 
   const body = el("div", "shiyi-ml-body");
   const tabs = el("div", "shiyi-ml-tabs");
