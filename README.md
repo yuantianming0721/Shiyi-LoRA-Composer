@@ -97,6 +97,7 @@ git clone https://github.com/yuantianming0721/Shiyi-LoRA-Composer
 | fps | 帧率，默认 24 |
 | quality | CRF，0-51，越小越清晰（默认 18） |
 | audio | 可选，接了就把音轨混进去（aac / opus） |
+| embed | 内嵌工作流 / 内嵌工作流+提示词 / 不内嵌。mp4 会把 JSON 写进容器元数据，用 `ffmpeg -i 文件` 能看到 `workflow` 字段；webm 和 gif 不支持，选了会在结果里说明 |
 
 序号不是随机数：扫目标目录里同一命名模板的已有文件，取最大号 +1，所以连点几次运行就是 `0001`、`0002`、`0003`，不会覆盖。改动 naming 或 folder 会各自独立计数。
 

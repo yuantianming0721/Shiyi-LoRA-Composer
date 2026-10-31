@@ -30,8 +30,8 @@ NAMING_TEMPLATES = {
 }
 
 FORMATS = {
-    "mp4 (h264)": {"ext": ".mp4", "video": ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart"], "audio": ["-c:a", "aac", "-b:a", "192k"]},
-    "mp4 (h265)": {"ext": ".mp4", "video": ["-c:v", "libx265", "-pix_fmt", "yuv420p", "-tag:v", "hvc1", "-movflags", "+faststart"], "audio": ["-c:a", "aac", "-b:a", "192k"]},
+    "mp4 (h264)": {"ext": ".mp4", "video": ["-c:v", "libx264", "-pix_fmt", "yuv420p"], "audio": ["-c:a", "aac", "-b:a", "192k"]},
+    "mp4 (h265)": {"ext": ".mp4", "video": ["-c:v", "libx265", "-pix_fmt", "yuv420p", "-tag:v", "hvc1"], "audio": ["-c:a", "aac", "-b:a", "192k"]},
     "webm (vp9)": {"ext": ".webm", "video": ["-c:v", "libvpx-vp9", "-b:v", "0", "-pix_fmt", "yuv420p"], "audio": ["-c:a", "libopus", "-b:a", "160k"]},
     "gif": {"ext": ".gif", "video": ["-vf", "split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse"], "audio": []},
 }
@@ -130,9 +130,14 @@ class ShiyiVideoSave:
                 "format": (list(FORMATS.keys()), {"default": "mp4 (h264)"}),
                 "fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 240.0, "step": 0.1}),
                 "quality": ("INT", {"default": 18, "min": 0, "max": 51}),
+                "embed": (["内嵌工作流", "内嵌工作流+提示词", "不内嵌"], {"default": "内嵌工作流"}),
             },
             "optional": {
                 "audio": ("AUDIO",),
+            },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
             },
         }
 
@@ -140,7 +145,8 @@ class ShiyiVideoSave:
     def IS_CHANGED(cls, **kwargs):
         return float("nan")
 
-    def save(self, images, naming, filename, folder, format, fps, quality, audio=None):
+    def save(self, images, naming, filename, folder, format, fps, quality, embed,
+             audio=None, prompt=None, extra_pnginfo=None):
         if not torch.is_tensor(images) or images.ndim != 4:
             raise ValueError("images 输入要求是 IMAGE 批次（帧数 × 高 × 宽 × 通道）")
 
@@ -174,6 +180,25 @@ class ShiyiVideoSave:
             command += spec["video"]
         if audio_path and spec["audio"]:
             command += spec["audio"]
+
+        embedded = 0
+        unsupported = False
+        if embed != "不内嵌" and spec["ext"] != ".mp4":
+            # webm / gif 的容器不接受自定义元数据，干脆不假装内嵌了
+            unsupported = True
+        if embed != "不内嵌" and spec["ext"] == ".mp4":
+            workflow = (extra_pnginfo or {}).get("workflow") if isinstance(extra_pnginfo, dict) else None
+            if workflow:
+                command += ["-metadata", "workflow=" + json.dumps(workflow, ensure_ascii=False)]
+                embedded += 1
+            if embed == "内嵌工作流+提示词" and prompt:
+                command += ["-metadata", "prompt=" + json.dumps(prompt, ensure_ascii=False)]
+                embedded += 1
+            if spec["ext"] == ".mp4":
+                command += ["-movflags", "+use_metadata_tags+faststart"]
+        elif spec["ext"] == ".mp4":
+            command += ["-movflags", "+faststart"]
+
         command += [target]
 
         bar = ProgressBar(len(frames)) if ProgressBar else None
@@ -197,7 +222,10 @@ class ShiyiVideoSave:
             raise RuntimeError(f"ffmpeg 没生成文件：{target}")
 
         size_mb = os.path.getsize(target) / 1048576
-        summary = f"{target}（{len(frames)} 帧 · {width}x{height} · {size_mb:.1f} MB）"
+        note = f" · 内嵌 {embedded} 项" if embedded else ""
+        if unsupported:
+            note = " · 该格式不支持内嵌工作流"
+        summary = f"{target}（{len(frames)} 帧 · {width}x{height} · {size_mb:.1f} MB{note}）"
         return {"ui": {"text": [summary]}, "result": ()}
 
 
