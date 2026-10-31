@@ -1,8 +1,12 @@
-from .nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
+from .nodes import NODE_CLASS_MAPPINGS as LORA_CLASSES, NODE_DISPLAY_NAME_MAPPINGS as LORA_NAMES
+from .video_save import NODE_CLASS_MAPPINGS as SAVE_CLASSES, NODE_DISPLAY_NAME_MAPPINGS as SAVE_NAMES
 from .routes import register_routes
 from .tag_library import sync_static
 
 WEB_DIRECTORY = "./web"
+
+NODE_CLASS_MAPPINGS = {**LORA_CLASSES, **SAVE_CLASSES}
+NODE_DISPLAY_NAME_MAPPINGS = {**LORA_NAMES, **SAVE_NAMES}
 
 register_routes()
 sync_static()

@@ -84,6 +84,22 @@ git clone https://github.com/yuantianming0721/Shiyi-LoRA-Composer
 - `clip_type` 下拉来自 `comfy.sd.CLIPType`（38 个），选错会加载失败，按模型族选（flux → `flux`，qwen → `qwen_image`，krea2 → `krea2`）
 - 新增模型文件后：面板点刷新即好；原生「当前模型」下拉要重启 ComfyUI 才会出现新条目
 
+## 懒人的视频保存
+
+`IMAGES` 进，视频出，命名和目录都不用自己拼。
+
+| 输入 | 说明 |
+|---|---|
+| naming | 日期+时间+序号 / 日期+时间 / 日期+序号 / 时间+序号 / 日期 / 时间 / 自定义 |
+| filename | 选「自定义」时生效，支持 `{date}` `{time}` `{datetime}` `{index}` 占位 |
+| folder | output 下的子目录，支持 `{date}` 占位，留空就是 output 根；`..` 和绝对路径会被拒 |
+| format | mp4 (h264) / mp4 (h265) / webm (vp9) / gif |
+| fps | 帧率，默认 24 |
+| quality | CRF，0-51，越小越清晰（默认 18） |
+| audio | 可选，接了就把音轨混进去（aac / opus） |
+
+序号不是随机数：扫目标目录里同一命名模板的已有文件，取最大号 +1，所以连点几次运行就是 `0001`、`0002`、`0003`，不会覆盖。改动 naming 或 folder 会各自独立计数。
+
 ## 触发词存在哪
 
 触发词是 **LoRA 自己的属性**，存在插件目录的 `triggers.json`（`{相对路径: 触发词}`，空串＝明确不要）：
@@ -138,6 +154,8 @@ CLIP 加载器 ──clip──┬──► LoRA 编排器 ──MODEL──► 
   - **搜索**：按名称或内容过滤，跨分类显示并标注所属分类
 - **Fibo 编辑**：给 Fibo 2.0 的 VGL 结构化提示词用。5 个一键模板（最小编辑 / 完整编辑 / 去物 / 改背景 / 换风格）+ 11 个字段芯片；点字段把对应骨架**合并**进当前 JSON，已有字段不覆盖。底部「检查必填」按官方 5 项（`short_description` / `background_setting` / `lighting` / `aesthetics` / `context`）检查，编辑另看 `edit_instruction`。当前文本不是 JSON 时字段芯片拒绝写入，避免误删手写提示词。
 - **反推参考图**：点按钮用本地 Ollama 的 `qwen3-vl:8b`（快）、`qwen3-vl:30b-a3b`（准，MoE）或 `huihui_ai/qwen3-vl-abliterated:8b` 读参考图，自动填 10 个 VGL 字段。**优先读节点自己的 `image` 输入**（把 LoadImage 的 IMAGE 直接接上来，不再靠下游连线猜），没接才回退到 `PROMPT → TextEncodeFibo2 → images.image_1`。后端 `/shiyi_lora/vgl_caption`，直连 `127.0.0.1:11434`（可用 `SHIYI_OLLAMA_URL` 覆盖）。反推得到的是参考图描述，编辑前要先把去掉/换掉的部分改掉，再填 `edit_instruction`。
+- **精细反推**：一键跑两段——JoyCaption（4-bit）先写详细英文描述，再用 `qwen2.5:7b`（纯文本，快）结构化+翻译成中文 VGL。后端 `/shiyi_lora/joycaption` + `/shiyi_lora/vgl_structure`。对“白布/衣服/枕头”这类容易混的细节比单用 Qwen3-VL 更准。
+- **JSON 美化**：反推/模板写入时自动按 `short_description → objects → edit_instruction → ...` 排序，顶层字段和对象之间加空行；对象里 `description / clothing / pose / expression / action` 排在前面。手动改乱了点「整理 JSON」即可重排，仍是标准 JSON，可直接跑。
 - **PROMPT 输出**：这个节点的第二个输出是合并后的最终文本，可直接接 `TextEncodeFibo2.prompt`。配套工作流 `Fibo2-懒人编辑.json` 已经接好：在 Fibo 编辑页写完，点运行即可。
 
 标签库接口：`GET /shiyi_lora/tags`（返回 `{total, categories:[{name,count,groups:[{name,color,tags:[{tag,zh}]}]}]}`）。
