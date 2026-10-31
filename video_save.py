@@ -47,17 +47,18 @@ def _stamp(fmt):
 
 
 def _safe_folder(folder):
-    """保存目录：绝对路径直接用，相对路径挂到 output 下；支持 {date} / {time} 占位。"""
+    """只允许写进 output：相对路径挂到 output 下，跑出去了就拒绝。"""
     text = (folder or "").strip().replace("\\", "/")
     text = text.replace("{date}", _stamp("%Y-%m-%d")).replace("{time}", _stamp("%H-%M-%S")).replace("{datetime}", _stamp("%Y-%m-%d_%H-%M-%S"))
-    if not text:
-        return folder_paths.get_output_directory()
-    if ".." in [part for part in text.split("/") if part]:
+    parts = [part for part in text.split("/") if part not in ("", ".")]
+    if any(part == ".." for part in parts):
         raise ValueError(f"保存文件夹不能包含 ..：{folder}")
     if os.path.isabs(text) or re.match(r"^[A-Za-z]:", text):
-        target = os.path.abspath(text)
-    else:
-        target = os.path.abspath(os.path.join(folder_paths.get_output_directory(), text))
+        raise ValueError(f"保存文件夹要填相对 output 的子目录，不要填绝对路径：{folder}")
+    root = os.path.abspath(folder_paths.get_output_directory())
+    target = os.path.abspath(os.path.join(root, *parts)) if parts else root
+    if target != root and os.path.commonpath([root, target]) != root:
+        raise ValueError(f"保存文件夹跑到 output 外面了：{folder}")
     os.makedirs(target, exist_ok=True)
     return target
 
@@ -125,7 +126,7 @@ class ShiyiVideoSave:
                 "filename": ("STRING", {"default": "{date}_{time}_{index}", "multiline": False,
                                         "tooltip": "选「自定义」时生效，可用 {date} {time} {datetime} {index}"}),
                 "folder": ("STRING", {"default": "", "multiline": False,
-                                      "tooltip": "留空 = output 根；可填 D:/视频/作品 这样的绝对路径，或相对 output 的子目录；支持 {date} 占位"}),
+                                      "tooltip": "留空 = output 根；填子目录名就挂在 output 下，支持 {date} 占位；绝对路径会被拒"}),
                 "format": (list(FORMATS.keys()), {"default": "mp4 (h264)"}),
                 "fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 240.0, "step": 0.1}),
                 "quality": ("INT", {"default": 18, "min": 0, "max": 51}),
