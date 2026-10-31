@@ -47,19 +47,17 @@ def _stamp(fmt):
 
 
 def _safe_folder(folder):
-    """把用户填的子目录限制在 output 里面，支持 {date} / {time} 占位。"""
+    """保存目录：绝对路径直接用，相对路径挂到 output 下；支持 {date} / {time} 占位。"""
     text = (folder or "").strip().replace("\\", "/")
     text = text.replace("{date}", _stamp("%Y-%m-%d")).replace("{time}", _stamp("%H-%M-%S")).replace("{datetime}", _stamp("%Y-%m-%d_%H-%M-%S"))
-    parts = [part for part in text.split("/") if part not in ("", ".")]
-    if any(part == ".." for part in parts):
+    if not text:
+        return folder_paths.get_output_directory()
+    if ".." in [part for part in text.split("/") if part]:
         raise ValueError(f"保存文件夹不能包含 ..：{folder}")
-    if os.path.isabs(text) or (len(text) > 1 and text[1] == ":"):
-        raise ValueError(f"保存文件夹要填相对 output 的子目录，不要填绝对路径：{folder}")
-    root = folder_paths.get_output_directory()
-    target = os.path.join(root, *parts) if parts else root
-    target = os.path.abspath(target)
-    if os.path.commonpath([root, target]) != os.path.abspath(root):
-        raise ValueError(f"保存文件夹跑到 output 外面了：{folder}")
+    if os.path.isabs(text) or re.match(r"^[A-Za-z]:", text):
+        target = os.path.abspath(text)
+    else:
+        target = os.path.abspath(os.path.join(folder_paths.get_output_directory(), text))
     os.makedirs(target, exist_ok=True)
     return target
 
@@ -124,8 +122,10 @@ class ShiyiVideoSave:
             "required": {
                 "images": ("IMAGE",),
                 "naming": (list(NAMING_TEMPLATES.keys()), {"default": "日期+时间+序号"}),
-                "filename": ("STRING", {"default": "{date}_{time}_{index}", "multiline": False}),
-                "folder": ("STRING", {"default": "", "multiline": False}),
+                "filename": ("STRING", {"default": "{date}_{time}_{index}", "multiline": False,
+                                        "tooltip": "选「自定义」时生效，可用 {date} {time} {datetime} {index}"}),
+                "folder": ("STRING", {"default": "", "multiline": False,
+                                      "tooltip": "留空 = output 根；可填 D:/视频/作品 这样的绝对路径，或相对 output 的子目录；支持 {date} 占位"}),
                 "format": (list(FORMATS.keys()), {"default": "mp4 (h264)"}),
                 "fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 240.0, "step": 0.1}),
                 "quality": ("INT", {"default": 18, "min": 0, "max": 51}),

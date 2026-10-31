@@ -92,7 +92,7 @@ git clone https://github.com/yuantianming0721/Shiyi-LoRA-Composer
 |---|---|
 | naming | 日期+时间+序号 / 日期+时间 / 日期+序号 / 时间+序号 / 日期 / 时间 / 自定义 |
 | filename | 选「自定义」时生效，支持 `{date}` `{time}` `{datetime}` `{index}` 占位 |
-| folder | output 下的子目录，支持 `{date}` 占位，留空就是 output 根；`..` 和绝对路径会被拒 |
+| folder | 保存目录。留空 = output 根；填 `D:/视频/作品` 这种绝对路径就存到那里，填相对路径就挂在 output 下；支持 `{date}` 占位；只有 `..` 会被拒（防手滑） |
 | format | mp4 (h264) / mp4 (h265) / webm (vp9) / gif |
 | fps | 帧率，默认 24 |
 | quality | CRF，0-51，越小越清晰（默认 18） |
