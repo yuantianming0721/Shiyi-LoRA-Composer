@@ -101,6 +101,19 @@ git clone https://github.com/yuantianming0721/Shiyi-LoRA-Composer
 
 序号不是随机数：扫目标目录里同一命名模板的已有文件，取最大号 +1，所以连点几次运行就是 `0001`、`0002`、`0003`，不会覆盖。改动 naming 或 folder 会各自独立计数。
 
+## 懒人的图片保存
+
+跟视频保存同一套命名和目录规则，另外能把工作流写进 PNG。
+
+| 输入 | 说明 |
+|---|---|
+| naming / filename / folder | 和视频保存完全一致（7 种预设 + `{date}{time}{datetime}{index}` 模板） |
+| format | png (无损) / jpg (质量 0-100) / webp (质量 0-100) |
+| quality | 只对 jpg / webp 有效 |
+| embed | 内嵌工作流+提示词 / 内嵌工作流 / 不内嵌。只有 png 真正写进 tEXt 块，jpg 和 webp 会提示不支持 |
+
+批量出图时序号连着走：一次 3 张就是 `0001`、`0002`、`0003`。内嵌的 png 拖回 ComfyUI 画布能直接还原工作流（和原生 SaveImage 一样）。
+
 ## 触发词存在哪
 
 触发词是 **LoRA 自己的属性**，存在插件目录的 `triggers.json`（`{相对路径: 触发词}`，空串＝明确不要）：
